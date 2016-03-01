@@ -128,7 +128,7 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     else
         # libraries for Windows desktop compiling
         # NOTE: GLFW3 and OpenAL Soft libraries should be installed
-        LIBS = -lraylib -lglfw3 -lglew32 -lopengl32 -lopenal32 -lgdi32
+        LIBS = -lraylib -lglfw3 -lglew32 -lopengl32 -lopenal32 -lgdi32 libraries/satcollision.o libraries/c2dmath.o
     endif
     endif
 endif
@@ -145,7 +145,7 @@ endif
 ifeq ($(PLATFORM_OS),WINDOWS)
     # resources file contains windows exe icon
     # -Wl,--subsystem,windows hides the console window
-    WINFLAGS = resources -Wl,--subsystem,windows
+    WINFLAGS = resources
 endif
 
 ifeq ($(PLATFORM),PLATFORM_WEB)

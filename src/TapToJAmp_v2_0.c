@@ -69,8 +69,13 @@ int main(void)
     // TODO: Load global data here (assets that must be available in all screens, i.e. fonts)
     
     // Setup and Init first screen
+    /*
     InitLoadingScreen();
     currentScreen = LOADING;
+    */
+    // DEBUG
+    InitTitleScreen();
+    currentScreen = TITLE;
     
 	SetTargetFPS(60);
 	//----------------------------------------------------------
