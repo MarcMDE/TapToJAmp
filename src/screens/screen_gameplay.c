@@ -158,6 +158,9 @@ Texture2D platfsTexture;
 
 bool deadCounter;
 bool deadSpan;
+float deadFadeAlpha;
+bool deadFadeIn;
+bool isDeadFadeFinished;
 
 bool isGamePaused;
 
@@ -177,6 +180,7 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
 void CheckPlayerTrisCollision (Player *p, TriGameObject *tris);
 void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera);
 void CheckPlayerPlatfsCollision (Player *p, BoxGameObject *platfs);
+void ResetGameplay ();
 //----------------------------------------------------------------------------------
 
 // Gameplay Screen Initialization logic
@@ -193,13 +197,13 @@ void InitGameplayScreen(void)
     
     // Set gravity
     gravity.direction = (Vector2){0, 1};
-    gravity.value = 0.95f;
+    gravity.value = 1;
     gravity.force = Vector2FloatProduct(gravity.direction, gravity.value);
     
     // Set camera
     camera.position = Vector2Zero();
     camera.direction = Vector2Right();
-    camera.speed = (Vector2){5.2f, 0};
+    camera.speed = (Vector2){5.45f, 0};
     camera.isMoving = false;
     
     isGameplayStopped = true;
@@ -207,17 +211,21 @@ void InitGameplayScreen(void)
     // Counter on player dead (before level reset)
     deadCounter = 0;
     deadSpan = 2 * GAME_SPEED;
+    deadFadeAlpha = 0;
+    deadFadeIn = true;
+    isDeadFadeFinished = true;
     
     isGamePaused = false;
     
-    InitPlayer(&player, (Vector2){5, gridLenght.y-2}, (Vector2){0, 13.5f}, 0.75f * GAME_SPEED);
+    InitPlayer(&player, (Vector2){5, gridLenght.y-2}, (Vector2){0, 14.5f}, 0.75f * GAME_SPEED);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
     
     for (int i=0; i<3; i++)
     {
-        tris[i].transform.position = GetOnGridPosition((Vector2) {35 + i * 5, gridLenght.y-2});
+        tris[i].transform.position = GetOnGridPosition((Vector2) {35 + i, gridLenght.y-2});
+        if (i==2) tris[i].transform.position = GetOnGridPosition((Vector2) {45 + i * 5, gridLenght.y-2});
         tris[i].transform.scale = 1;
         tris[i].transform.rotation = 0;
         trisSourcePosition[i] = tris[i].transform.position;
@@ -257,52 +265,60 @@ void InitGameplayScreen(void)
 
 // Gameplay Screen Update logic
 void UpdateGameplayScreen(void)
-{
-    if (IsKeyPressed('P')) isGamePaused = !isGamePaused;
-    
-    if (!isGamePaused)
+{   
+    if (isDeadFadeFinished)
     {
-        if (!isGameplayStopped)
+        if (IsKeyPressed('P')) isGamePaused = !isGamePaused;
+        
+        if (!isGamePaused)
         {
-            if (player.isAlive)
+            if (!isGameplayStopped)
             {
-                camera.position = Vector2Add(camera.position, Vector2Product(camera.direction, camera.speed));
-                //printf("%f\n", camera.position.x);
-
-                // Update game objects position before checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
-                UpdateTris(tris, trisSourcePosition, player.transform.position, camera);
-                UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, camera); 
-                UpdatePlayer(&player);
-                
-                // Check if player landed on the ground
-                if (player.transform.position.y + player.collider.box.size.y/2 >= groundY) SetPlayerAsGrounded(&player, groundY);
-                // Check if player collided with a triangle
-                CheckPlayerTrisCollision(&player, tris);
-                // Check if player landed (or collided) on a platfsorm.
-                CheckPlayerPlatfsCollision(&player, platfs);
-            }
-            else
-            {
-                if(deadCounter>=deadSpan)
+                if (player.isAlive)
                 {
+                    camera.position = Vector2Add(camera.position, Vector2Product(camera.direction, camera.speed));
+                    //printf("%f\n", camera.position.x);
+
+                    // Update game objects position before checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
+                    UpdateTris(tris, trisSourcePosition, player.transform.position, camera);
+                    UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, camera); 
+                    UpdatePlayer(&player);
                     
+                    // Check if player landed on the ground
+                    if (player.transform.position.y + player.collider.box.size.y/2 >= groundY) SetPlayerAsGrounded(&player, groundY);
+                    // Check if player collided with a triangle
+                    CheckPlayerTrisCollision(&player, tris);
+                    // Check if player landed (or collided) on a platfsorm.
+                    CheckPlayerPlatfsCollision(&player, platfs);
                 }
                 else
                 {
-                    
+                    if(deadCounter>=deadSpan)
+                    {
+                        isDeadFadeFinished = false;
+                    }
+                    else
+                    {
+                        deadCounter++;
+                        // TODO: Add dead explosion effects (anim + sound)
+                    }
+                    isDeadFadeFinished = false;
                 }
-                // TODO: Add dead explosion effects (anim + sound)
             }
-        }
-        else
-        {
-            if(IsKeyPressed(KEY_SPACE))
+            else
             {
-                // Start gameplay (first time or after player dies)
-                isGameplayStopped = false;
-                camera.isMoving = true;
+                if(IsKeyPressed(KEY_SPACE))
+                {
+                    // Start gameplay (first time or after player dies)
+                    isGameplayStopped = false;
+                    camera.isMoving = true;
+                }
             }
         }
+    }
+    else
+    {
+        ResetGameplay();
     }
     // Press enter to change to ENDING screen
     if (IsKeyPressed(KEY_ENTER))
@@ -320,9 +336,6 @@ void DrawGameplayScreen(void)
     // Draw Game Grid
     for (int i=0; i<gridLenght.x+1; i++) DrawRectangle(i*CELL_SIZE, 0, 1, GetScreenHeight(), LIGHTGRAY); // Columns
     for (int i=0; i<gridLenght.y; i++) DrawRectangle(0, i*CELL_SIZE, GetScreenWidth(), 1, LIGHTGRAY); // Rows
-
-    DrawText("GAMEPLAY SCREEN", 20, 20, 40, MAROON);
-    //DrawText("PRESS ENTER to JUMP to ENDING SCREEN", 170, 220, 20, MAROON);
     
     // Draw Tris
     for (int i=0; i<3; i++)
@@ -341,6 +354,11 @@ void DrawGameplayScreen(void)
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(LIGHTGRAY, 0.45f));
         DrawText("PAUSE", GetScreenWidth()/2 - 100, GetScreenHeight()/2-20, 40, DARKGRAY);
         DrawText("<P>", GetScreenWidth()/2 - 45, GetScreenHeight()/2 + 30, 24, DARKGRAY); 
+    }
+    
+    if (!isDeadFadeFinished)
+    {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, deadFadeAlpha));
     }
 }
 
@@ -553,9 +571,7 @@ void CheckPlayerPlatfsCollision (Player *p, BoxGameObject *platfs)
         {
             if (SATPolyPolyNCollide(p->collider.box.points, 4, platfs[i].collider.box.points, triNormals, 4))
             {
-                printf("p-platf collide\n");
                 // Player collided with a platform
-                //p->dynamic.prevPosition.y = 0;
                 
                 if (p->dynamic.prevPosition.y + CELL_SIZE/2 <= platfs[i].transform.position.y - CELL_SIZE/2)
                 {
@@ -571,6 +587,62 @@ void CheckPlayerPlatfsCollision (Player *p, BoxGameObject *platfs)
                     p->isAlive = false;   
                 }
             }
+        }
+    }
+}
+
+void ResetGameplay ()
+{
+    if (deadFadeIn)
+    {
+        if (deadFadeAlpha >= 1)
+        {
+            deadFadeIn = false;
+            
+            // Reset variables 
+            camera.position = Vector2Zero();
+            isGameplayStopped = true;
+            deadCounter = 0;
+            
+            player.transform.position = GetOnGridPosition((Vector2){5, gridLenght.y-2});
+            player.transform.rotation = 0;
+            player.transform.scale = 1;
+            
+            player.dynamic.prevPosition = player.transform.position;
+            player.dynamic.velocity = Vector2Zero();
+            player.dynamic.isGrounded = false;
+            
+            UpdateSATBox(&player.collider.box, player.transform.position, Vector2FloatProduct(player.collider.box.size, player.transform.scale), player.transform.rotation);
+            
+            player.isAlive = true;
+            
+            for (int i=0; i<3; i++)
+            {
+                tris[i].state.isActive = true;
+                tris[i].collider.isActive = false;
+            }
+            UpdateTris(tris, trisSourcePosition, player.transform.position, camera);
+            
+            for (int i=0; i<3; i++)
+            {
+                platfs[i].state.isActive = true;
+                platfs[i].collider.isActive = false;
+            }
+            UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, camera); 
+        }
+        else deadFadeAlpha += 0.05f;
+    }
+    else
+    {
+        if (deadFadeAlpha <= 0)
+        {
+            deadFadeAlpha = 0;
+            isDeadFadeFinished = true;
+            deadFadeIn = true;
+        }
+        else
+        {
+            deadFadeAlpha -= 0.075f;
         }
     }
 }
