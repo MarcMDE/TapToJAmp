@@ -160,6 +160,10 @@ Vector2 platfsSourcePosition[3];
 Vector2 platfNormals[2];
 Texture2D platfsTexture;
 
+int attemptsCounter;
+bool isAttemptsCounterActive;
+Vector2 attemptsCounterPosition;
+
 bool deadCounter;
 bool deadSpan;
 float deadFadeAlpha;
@@ -221,6 +225,9 @@ void InitGameplayScreen(void)
     deadFadeAlpha = 0;
     deadFadeIn = true;
     isDeadFadeFinished = true;
+    
+    attemptsCounter = 1;
+    isAttemptsCounterActive = true;
     
     isGamePaused = false;
     
@@ -298,6 +305,11 @@ void UpdateGameplayScreen(void)
                     CheckPlayerTrisCollision(&player, tris);
                     // Check if player landed (or collided) on a platfsorm.
                     CheckPlayerPlatfsCollision(&player, platfs);
+                    
+                    if (isAttemptsCounterActive)
+                    {
+                        
+                    }
                 }
                 else
                 {
