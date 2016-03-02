@@ -143,11 +143,20 @@ bool isGameplayStopped;
 Camera2D camera;
 
 Player player;
+
 TriGameObject tris[3];
 Vector2 trisSourcePosition[3];
 Vector2 triNormals[3];
-
 Texture2D trisTexture;
+
+BoxGameObject platf[3];
+Vector2 platfSourcePosition[];
+Vector2 platfNormals[2]:
+Texture2D platfTexture;
+
+bool deadCounter;
+bool deadSpan;
+
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -178,36 +187,64 @@ void InitGameplayScreen(void)
     
     // Set gravity
     gravity.direction = (Vector2){0, 1};
-    gravity.value = 0.85f;
+    gravity.value = 0.95f;
     gravity.force = Vector2FloatProduct(gravity.direction, gravity.value);
+    
+    // Set camera
+    camera.position = Vector2Zero();
+    camera.direction = Vector2Right();
+    camera.speed = (Vector2){5.2f, 0};
+    camera.isMoving = false;
     
     isGameplayStopped = true;
     
-    InitPlayer(&player, (Vector2){5, groundY}, (Vector2){0, 13}, 0.75f);
+    // Counter on player dead (before level reset)
+    deadCounter = 0;
+    deadSpan = 2 * GAME_SPEED;
+    
+    InitPlayer(&player, (Vector2){5, gridLenght.y-2}, (Vector2){0, 13.5f}, 0.75f * GAME_SPEED);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
     
     for (int i=0; i<3; i++)
     {
-        tris[i].transform.position = GetOnGridPosition((Vector2) {10 + i * 4, groundY});
+        tris[i].transform.position = GetOnGridPosition((Vector2) {20 + i * 5, gridLenght.y-2});
         tris[i].transform.scale = 1;
         tris[i].transform.rotation = 0;
+        trisSourcePosition[i] = tris[i].transform.position;
         
         InitSATTri(&tris[i].collider.tri, tris[i].transform.position, (Vector2){trisTexture.width, trisTexture.height}, tris[i].transform.rotation);
         tris[i].collider.isActive = false;
     
         tris[i].state.isActive = true;
-        tris[i].state.isDrawed = false;
+        tris[i].state.isInScreen = false;
         tris[i].state.isUp = true;
     }
     
-    SetNormals(tris[0].collider.tri.points, &triNormals, 3, true);
+    SetNormals(tris[0].collider.tri.points, triNormals, 3, true);
     
-    camera.position = Vector2Zero();
-    camera.direction = Vector2Right();
-    camera.speed = (Vector2){2.5f, 0};
-    isMoving = false;
+    // Init Platforms
+    platfTexture = LoadTexture("assets/gameplay/platf_main.png");
+    
+    for (int i=0; i<3; i++)
+    {
+        platf[i].transform.position = GetOnGridPosition((Vector2) {36 + i, gridLenght.y-2});
+        platf[i].transform.scale = 1;
+        platf[i].transform.rotation = 0;
+        platfSourcePosition[i] = tris[i].transform.position;
+        
+        InitSATBox(&platf[i].collider.box, platf[i].transform.position, (Vector2){platfTexture.width, platfTexture.height}, platf[i].transform.rotation);
+        platf[i].collider.isActive = false;
+    
+        platf[i].state.isActive = true;
+        platf[i].state.isInScreen = false;
+        platf[i].state.isUp = true;
+    }
+    
+    // Set AACube normals (Right/Left + Up/Down)
+    platfNormals[0] = Vector2Up();
+    platfNormals[1] = Vecto2Right();
 }
 
 // Gameplay Screen Update logic
@@ -216,12 +253,15 @@ void UpdateGameplayScreen(void)
     if (!isGameplayStopped)
     {
         camera.position = Vector2Add(camera.position, Vector2Product(camera.direction, camera.speed));
+        printf("%f\n", camera.position.x);
         
         // TODO: Check if player landed (or collided) on a platform.
     
-        // TODO: Check if player collided with a triangle
+        // Check if player collided with a triangle
         CheckPlayerTrisCollision(&player, tris);
         
+        // Update game objects position after checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
+        UpdateTris(tris, trisSourcePosition, player.transform.position, camera);
         UpdatePlayer(&player);   
     }
     else
@@ -244,16 +284,22 @@ void UpdateGameplayScreen(void)
 // Gameplay Screen Draw logic
 void DrawGameplayScreen(void)
 {
+    // Draw Ground
     DrawRectangle(0, groundY, GetScreenWidth(), 2, BLACK);
     
-    //Draw Game Grid
+    // Draw Game Grid
     for (int i=0; i<gridLenght.x+1; i++) DrawRectangle(i*CELL_SIZE, 0, 1, GetScreenHeight(), LIGHTGRAY); // Columns
     for (int i=0; i<gridLenght.y; i++) DrawRectangle(0, i*CELL_SIZE, GetScreenWidth(), 1, LIGHTGRAY); // Rows
 
-    
-    //DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), PURPLE);
     DrawText("GAMEPLAY SCREEN", 20, 20, 40, MAROON);
-    DrawText("PRESS ENTER to JUMP to ENDING SCREEN", 170, 220, 20, MAROON);
+    //DrawText("PRESS ENTER to JUMP to ENDING SCREEN", 170, 220, 20, MAROON);
+    
+    // Draw Tris
+    for (int i=0; i<3; i++)
+    {
+        DrawTexturePro(trisTexture, (Rectangle){0, 0, trisTexture.width, trisTexture.height}, (Rectangle){tris[i].transform.position.x, tris[i].transform.position.y, 
+        trisTexture.width, trisTexture.height}, (Vector2){trisTexture.width/2, trisTexture.height/2}, tris[i].transform.rotation, WHITE);
+    }
     
     DrawPlayer(player);
 }
@@ -261,7 +307,8 @@ void DrawGameplayScreen(void)
 // Gameplay Screen Unload logic
 void UnloadGameplayScreen(void)
 {
-    
+    UnloadTexture(player.texture);
+    UnloadTexture(trisTexture);
 }
 
 // Gameplay Screen should finish?
@@ -293,14 +340,14 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->dynamic.velocity = Vector2Zero();
     p->dynamic.isGrounded = false;
     
-    // TODO: Set player texture
+    //Set player texture
     p->texture = LoadTexture("assets/gameplay/character/main_cube.png");
     
     // Set p color
     p->color = WHITE;
     
     // Init p boxCollider
-    InitSATBox(&p->boxCollider, p->transform.position, (Vector2){p->texture.width, p->texture.height}, p->transform.rotation);
+    InitSATBox(&p->collider.box, p->transform.position, (Vector2){p->texture.width, p->texture.height}, p->transform.rotation);
     
     // Init easing
     p->rotationEasing.t = 0;
@@ -308,12 +355,16 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->rotationEasing.c = 180; // Try with 90
     p->rotationEasing.d = rotationSpan;
     p->rotationEasing.isFinished = false;
+    
+    p->isAlive = true;
 }
 
 void UpdatePlayer(Player *p)
 {   
+    // TODO: Check collisions order (avoid player-ground and player-platform overlaping)
+    
     // Check if player landed on the ground
-    if (p->transform.position.y + p->boxCollider.size.y/2 >= groundY) SetPlayerAsGrounded(p, groundY);
+    if (p->transform.position.y + p->collider.box.size.y/2 >= groundY) SetPlayerAsGrounded(p, groundY);
 
     if (!p->dynamic.isGrounded)
     {
@@ -334,16 +385,16 @@ void UpdatePlayer(Player *p)
         // TODO: Init easing
     }
     
-    // TODO: Update player transform
+    // Update player transform
     p->transform.position = Vector2Add(p->transform.position, p->dynamic.velocity);
     
     // Set position again (in case player had collided with the ground in this update)
-    if (p->transform.position.y + p->boxCollider.size.y/2 >= groundY) SetPlayerAsGrounded(p, groundY);
+    if (p->transform.position.y + p->collider.box.size.y/2 >= groundY) SetPlayerAsGrounded(p, groundY);
     
-    // TODO: Update player collider
-    UpdateSATBox(&p->boxCollider, p->transform.position, Vector2FloatProduct(p->boxCollider.size, p->transform.scale), p->transform.rotation);
+    // Update player collider
+    UpdateSATBox(&p->collider.box, p->transform.position, Vector2FloatProduct(p->collider.box.size, p->transform.scale), p->transform.rotation);
     
-    // Set player isGrounded to false since it has to be checked every frame (player would be falling from a platform)
+    // Set player isGrounded to false since it has to be checked every frame (player could be falling from a platform)
     p->dynamic.isGrounded = false; 
 }
 
@@ -351,7 +402,7 @@ void SetPlayerAsGrounded(Player *p, int landPositionY)
 {
     p->dynamic.isGrounded = true;
     p->dynamic.velocity.y = 0;
-    p->transform.position.y = landPositionY - p->boxCollider.size.y/2;
+    p->transform.position.y = landPositionY - p->collider.box.size.y/2;
 }
 
 void DrawPlayer (Player p)
@@ -368,7 +419,7 @@ void SetOnCameraPosition (Vector2 *position, Vector2 sourcePosition, Camera2D ca
 
 void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D camera)
 {
-    SetOnCameraPosition(position, sourcePosition)
+    SetOnCameraPosition(position, sourcePosition, camera);
     
     if (state->isInScreen)
     {
@@ -376,7 +427,7 @@ void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 s
         if (position->x + CELL_SIZE/2 < 0) 
         {
             state->isInScreen = false;
-            staet->isActive = false;
+            state->isActive = false;
         }
     }
     else
@@ -393,17 +444,19 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
 {
     for (int i=0; i<3; i++)
     {
-        if (tris[i]->state.isActive)
+        if (tris[i].state.isActive)
         {
-            UpdateOnCameraGameObject(tris[i]->transform.position, tris[i]->state, sourcePosition[i], camera);
+            UpdateOnCameraGameObject(&tris[i].transform.position, &tris[i].state, sourcePosition[i], camera);
             
-            if (tris[i]->state.isInScreen && tris[i]->transform.position.x-CELL_SIZE*1.5f < playerPosition.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
+            if (tris[i].state.isInScreen && tris[i].transform.position.x-CELL_SIZE*1.5f < playerPosition.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
             {
                 // Tri is on the player "colision zone"
                 tris[i].collider.isActive = true;
-                UpdateSATTri(tris[i]->collider.tri, tris[i].transform.position, Vector2FloatProduct(tris[i].collider.tri.size, tris[i].transform.scale), tris[i].transform.rotation);
+                
+                // TODO: Replace to Updat SATAATri (since triangles won't change its rotation/scale atm)
+                UpdateSATTri(&tris[i].collider.tri, tris[i].transform.position, Vector2FloatProduct(tris[i].collider.tri.size, tris[i].transform.scale), tris[i].transform.rotation);
             }
-            else if (tris[i]->state.isInScreen && tris[i]->transform.position.x + CELL_SIZE*1.5f < player.position.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
+            else if (tris[i].state.isInScreen && tris[i].transform.position.x + CELL_SIZE*1.5f < player.transform.position.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
             {
                 // Tri is out the player "colision zone"
                 tris[i].collider.isActive = false;
@@ -416,14 +469,16 @@ void CheckPlayerTrisCollision (Player *p, TriGameObject *tris)
 {
     for (int i=0; i<3; i++)
     {
-        if (tris[i]->collider.isActive)
+        if (tris[i].collider.isActive)
         {
             if (SATPolyPolyNCollide(p->collider.box.points, 4, tris[i].collider.tri.points, triNormals, 3))
             {
                 // Player collided with a triangle
                 // Set player as dead
-                p.isAlive = false;
+                p->isAlive = false;
             }
         }
     }
 }
+
+// TODO: Code platforms Update

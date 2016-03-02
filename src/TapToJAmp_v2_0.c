@@ -161,7 +161,7 @@ int main(void)
             
             if (onTransition) DrawTransition();
         
-            //DrawFPS(10, 10);
+            DrawFPS(screenWidth - 80, 5);
         
         EndDrawing();
         //----------------------------------------------------------------------------------
