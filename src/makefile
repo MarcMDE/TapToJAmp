@@ -128,7 +128,7 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     else
         # libraries for Windows desktop compiling
         # NOTE: GLFW3 and OpenAL Soft libraries should be installed
-        LIBS = -lraylib -lglfw3 -lglew32 -lopengl32 -lopenal32 -lgdi32 libraries/satcollision.o libraries/c2dmath.o
+        LIBS = -lraylib -lglfw3 -lglew32 -lopengl32 -lopenal32 -lgdi32 libraries/satcollision.o libraries/c2dmath.o libraries/ceasings.o
     endif
     endif
 endif

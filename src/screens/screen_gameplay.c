@@ -32,6 +32,7 @@
 #include "raylib.h"
 #include "screens.h"
 #include "satcollision.h"
+#include "ceasings.h"
 #include "c2dmath.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,7 +63,9 @@ typedef struct Camera2D
 
 typedef struct Easing
 {
-    float t, b, c, d;
+    float t, b;
+    float c[2];
+    float d[2];
     bool isFinished;
 }Easing;
 
@@ -73,7 +76,8 @@ typedef struct DynamicObject
     Vector2 speed;
     Vector2 velocity;
     bool isGrounded;
-    //int onAirCounter;
+    bool isJumping;
+    bool isFalling;
 }DynamicObject;
 
 typedef struct BoxCollider
@@ -138,7 +142,7 @@ static int finishScreen;
 
 Vector2 gridLenght;
 int groundY;
-GravityForce gravity;
+GravityForce gravity[2];
 
 bool isGameplayStopped;
 
@@ -163,7 +167,6 @@ bool deadFadeIn;
 bool isDeadFadeFinished;
 
 bool isGamePaused;
-
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -196,9 +199,13 @@ void InitGameplayScreen(void)
     groundY = GetOnGridPosition((Vector2){0, gridLenght.y-2}).y + CELL_SIZE/2;
     
     // Set gravity
-    gravity.direction = (Vector2){0, 1};
-    gravity.value = 1;
-    gravity.force = Vector2FloatProduct(gravity.direction, gravity.value);
+    gravity[0].direction = (Vector2){0, 1};
+    gravity[0].value = 1;
+    gravity[0].force = Vector2FloatProduct(gravity[0].direction, gravity[0].value);
+    
+    gravity[1].direction = (Vector2){0, 1};
+    gravity[1].value = 2.5f;
+    gravity[1].force = Vector2FloatProduct(gravity[1].direction, gravity[1].value);
     
     // Set camera
     camera.position = Vector2Zero();
@@ -210,22 +217,22 @@ void InitGameplayScreen(void)
     
     // Counter on player dead (before level reset)
     deadCounter = 0;
-    deadSpan = 2 * GAME_SPEED;
+    deadSpan = 1.2f * GAME_SPEED;
     deadFadeAlpha = 0;
     deadFadeIn = true;
     isDeadFadeFinished = true;
     
     isGamePaused = false;
     
-    InitPlayer(&player, (Vector2){5, gridLenght.y-2}, (Vector2){0, 14.5f}, 0.75f * GAME_SPEED);
+    InitPlayer(&player, (Vector2){5, gridLenght.y-2}, (Vector2){0, 14.5f}, 0.7f * GAME_SPEED);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
     
     for (int i=0; i<3; i++)
     {
-        tris[i].transform.position = GetOnGridPosition((Vector2) {35 + i, gridLenght.y-2});
-        if (i==2) tris[i].transform.position = GetOnGridPosition((Vector2) {45 + i * 5, gridLenght.y-2});
+        tris[i].transform.position = GetOnGridPosition((Vector2) {200 + i, gridLenght.y-2});
+        if (i==2) tris[i].transform.position = GetOnGridPosition((Vector2) {250 + i * 5, gridLenght.y-2});
         tris[i].transform.scale = 1;
         tris[i].transform.rotation = 0;
         trisSourcePosition[i] = tris[i].transform.position;
@@ -245,7 +252,7 @@ void InitGameplayScreen(void)
     
     for (int i=0; i<3; i++)
     {
-        platfs[i].transform.position = GetOnGridPosition((Vector2) {18 + i, gridLenght.y-2});
+        platfs[i].transform.position = GetOnGridPosition((Vector2) {18 + i*20, gridLenght.y-2});
         platfs[i].transform.scale = 1;
         platfs[i].transform.rotation = 0;
         platfsSourcePosition[i] = platfs[i].transform.position;
@@ -269,6 +276,7 @@ void UpdateGameplayScreen(void)
     if (isDeadFadeFinished)
     {
         if (IsKeyPressed('P')) isGamePaused = !isGamePaused;
+        if (IsKeyPressed('R')) isDeadFadeFinished = false;
         
         if (!isGamePaused)
         {
@@ -302,7 +310,6 @@ void UpdateGameplayScreen(void)
                         deadCounter++;
                         // TODO: Add dead explosion effects (anim + sound)
                     }
-                    isDeadFadeFinished = false;
                 }
             }
             else
@@ -398,7 +405,9 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->dynamic.speed = speed;
     p->dynamic.velocity = Vector2Zero();
     p->dynamic.prevPosition = p->transform.position;
-    p->dynamic.isGrounded = false;
+    p->dynamic.isGrounded = true;
+    p->dynamic.isJumping = false;
+    p->dynamic.isFalling = false;
     
     //Set player texture
     p->texture = LoadTexture("assets/gameplay/character/main_cube.png");
@@ -412,9 +421,11 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     // Init easing
     p->rotationEasing.t = 0;
     p->rotationEasing.b = 0;
-    p->rotationEasing.c = 180; // Try with 90
-    p->rotationEasing.d = rotationSpan;
-    p->rotationEasing.isFinished = false;
+    p->rotationEasing.c[0] = 180;
+    p->rotationEasing.c[1] = 90;
+    p->rotationEasing.d[0] = rotationSpan;
+    p->rotationEasing.d[1] = rotationSpan/2.5f;
+    p->rotationEasing.isFinished = true;
     
     p->isAlive = true;
 }
@@ -422,9 +433,15 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
 void UpdatePlayer(Player *p)
 {   
     if (!p->dynamic.isGrounded)
-    {
+    {   
+        if (!p->dynamic.isFalling && !p->dynamic.isJumping)
+        {
+            // Player is falling from a platform
+            p->rotationEasing.isFinished = false;
+            p->dynamic.isFalling = true;
+        }
         // Add gravity force
-        p->dynamic.velocity = Vector2Add(p->dynamic.velocity, gravity.force);
+        p->dynamic.velocity = Vector2Add(p->dynamic.velocity, gravity[p->dynamic.isFalling].force);
     }
     else
     {
@@ -432,12 +449,14 @@ void UpdatePlayer(Player *p)
         if (IsKeyPressed(KEY_SPACE)) 
         {
             p->dynamic.isGrounded = false;
+            p->dynamic.isJumping = true;
             
             // Apply jump force
             p->dynamic.velocity = Vector2Product(p->dynamic.direction, p->dynamic.speed);
+            
+            // Init rotation easing
+            p->rotationEasing.isFinished = false;
         }
-        
-        // TODO: Init easing
     }
     
     // Set player previous position
@@ -445,13 +464,28 @@ void UpdatePlayer(Player *p)
     // Update player transform
     p->transform.position = Vector2Add(p->transform.position, p->dynamic.velocity);
     
-    // Set position again (in case player had collided with the ground in this update)
-    if (p->transform.position.y + p->collider.box.size.y/2 >= groundY) SetPlayerAsGrounded(p, groundY);
+    // Update rotation easing
+    if (!p->rotationEasing.isFinished)
+    {
+        if (p->rotationEasing.t >= p->rotationEasing.d[p->dynamic.isFalling])
+        {
+            // Finish easing
+            p->rotationEasing.isFinished = true;
+            p->rotationEasing.t = 0;
+            p->rotationEasing.b += p->rotationEasing.c[p->dynamic.isFalling];
+            if (p->rotationEasing.b >= 360) p->rotationEasing.b -= 360;
+        }
+        else
+        {
+            p->rotationEasing.t++;
+        }
+        p->transform.rotation = CubicEaseOut(p->rotationEasing.t, p->rotationEasing.b, p->rotationEasing.c[p->dynamic.isFalling], p->rotationEasing.d[p->dynamic.isFalling]);
+    }
     
     // Update player collider
     UpdateSATBox(&p->collider.box, p->transform.position, Vector2FloatProduct(p->collider.box.size, p->transform.scale), p->transform.rotation);
     
-    // Set player isGrounded to false since it has to be checked every frame (player could be falling from a platfsorm)
+    // Set player isGrounded to false since it has to be checked every frame
     p->dynamic.isGrounded = false; 
 }
 
@@ -460,13 +494,27 @@ void SetPlayerAsGrounded(Player *p, int landPositionY)
     p->dynamic.isGrounded = true;
     p->dynamic.velocity.y = 0;
     p->transform.position.y = landPositionY - p->collider.box.size.y/2;
+    
+    
+    // Finish easing
+    if (!p->rotationEasing.isFinished)
+    {
+        p->rotationEasing.isFinished = true;
+        p->rotationEasing.t = 0;
+        p->rotationEasing.b += p->rotationEasing.c[p->dynamic.isFalling];
+        if (p->rotationEasing.b >= 360) p->rotationEasing.b -= 360;
+        p->transform.rotation = CubicEaseOut(p->rotationEasing.t, p->rotationEasing.b, p->rotationEasing.c[p->dynamic.isFalling], p->rotationEasing.d[p->dynamic.isFalling]);
+    }
+    
+    p->dynamic.isJumping = false;
+    p->dynamic.isFalling = false;
 }
 
 void DrawPlayer (Player p)
 {
     DrawTexturePro(p.texture, (Rectangle){0, 0, p.texture.width, p.texture.height}, (Rectangle){p.transform.position.x, 
     p.transform.position.y, p.texture.width, p.texture.height}, (Vector2){p.texture.width/2, 
-    p.texture.height/2}, p.transform.rotation, p.color);
+    p.texture.height/2}, -p.transform.rotation, p.color);
 }
 
 void SetOnCameraPosition (Vector2 *position, Vector2 sourcePosition, Camera2D camera)
@@ -610,7 +658,14 @@ void ResetGameplay ()
             
             player.dynamic.prevPosition = player.transform.position;
             player.dynamic.velocity = Vector2Zero();
-            player.dynamic.isGrounded = false;
+            player.dynamic.isGrounded = true;
+            player.dynamic.isFalling = false;
+            player.dynamic.isJumping = false;
+            
+            player.rotationEasing.t = 0;
+            player.rotationEasing.b = 0;
+            player.rotationEasing.isFinished = true;
+            
             
             UpdateSATBox(&player.collider.box, player.transform.position, Vector2FloatProduct(player.collider.box.size, player.transform.scale), player.transform.rotation);
             
