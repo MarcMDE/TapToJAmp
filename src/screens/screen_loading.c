@@ -54,7 +54,7 @@ void UpdateLoadingScreen(void)
     framesCounter++;    // Count frames
 
     // Wait for 1.5 seconds (90 frames) before jumping to LOGO screen
-    if (framesCounter > 90)
+    if (framesCounter > 30)
     {
         finishScreen = true;
     }

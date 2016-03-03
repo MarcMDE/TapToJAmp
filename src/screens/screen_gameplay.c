@@ -36,6 +36,7 @@
 #include "c2dmath.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define GAME_SPEED 60
 
@@ -140,54 +141,68 @@ typedef struct GravityForce
 static int framesCounter;
 static int finishScreen;
 
-Vector2 gridLenght;
-int groundY;
-GravityForce gravity[2];
+static Vector2 gridLenght;
+static int groundY;
+static GravityForce gravity[2];
 
-bool isGameplayStopped;
+static bool isGameplayStopped;
 
-Camera2D camera;
+static Camera2D gameElementsCamera;
+static Camera2D mainCamera;
+static Vector2 onCameraAuxPosition;
 
-Player player;
+static Player player;
 
-TriGameObject tris[3];
-Vector2 trisSourcePosition[3];
-Vector2 triNormals[3];
-Texture2D trisTexture;
+// Map variables
+static int maxTris;
+static int maxPlatfs;
 
-BoxGameObject platfs[3];
-Vector2 platfsSourcePosition[3];
-Vector2 platfNormals[2];
-Texture2D platfsTexture;
+static TriGameObject *tris;
+static Vector2 *trisSourcePosition;
+static Vector2 triNormals[3];
+static Texture2D trisTexture;
 
-int attemptsCounter;
-bool isAttemptsCounterActive;
-Vector2 attemptsCounterPosition;
+static BoxGameObject *platfs;
+static Vector2 *platfsSourcePosition;
+static Vector2 platfNormals[2];
+static Texture2D platfsTexture;
 
-bool deadCounter;
-bool deadSpan;
-float deadFadeAlpha;
-bool deadFadeIn;
-bool isDeadFadeFinished;
+static int attemptsCounter;
+static bool isAttemptsCounterActive;
+static Vector2 attemptsCounterPosition;
+static Vector2 attemptsCounterSourcePosition;
 
-bool isGamePaused;
+static bool deadCounter;
+static bool deadSpan;
+static float deadFadeAlpha;
+static bool deadFadeIn;
+static bool isDeadFadeFinished;
+
+static bool isGamePaused;
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
 // Gameplay Screen Functions Definition
 //----------------------------------------------------------------------------------
 Vector2 GetOnGridPosition(Vector2 coordinates);
+Vector2 GetOnInverseGridPosition(Vector2 coordinates);
 void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpan);
 void UpdatePlayer(Player *p);
 void SetPlayerAsGrounded(Player *p, int landPositionY);
 void DrawPlayer (Player p);
 void SetOnCameraPosition (Vector2 *position, Vector2 sourcePosition, Camera2D camera);
+Vector2 GetOnCameraPosition (Vector2 position, Camera2D camera);
 void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D camera);
 void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera);
 void CheckPlayerTrisCollision (Player *p, TriGameObject *tris);
 void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera);
 void CheckPlayerPlatfsCollision (Player *p, BoxGameObject *platfs);
 void ResetGameplay ();
+void InitTri(int index, Vector2 coordinates, int yGridLenght);
+void InitPlatf(int index, Vector2 coordinates, int yGridLenght);
+void LoadMap();
+bool SameColor(Color a, Color b);
+void UpdateCustomAASATTriPosition (SATTri *tri, Vector2 position);
 //----------------------------------------------------------------------------------
 
 // Gameplay Screen Initialization logic
@@ -196,15 +211,14 @@ void InitGameplayScreen(void)
     framesCounter = 0;
     finishScreen = 0;
     
-    gridLenght.x = GetScreenWidth()/CELL_SIZE;
-    gridLenght.y = GetScreenHeight()/CELL_SIZE;
+    LoadMap();
     
     // Set ground position in the bottom of the desired cell. 
-    groundY = GetOnGridPosition((Vector2){0, gridLenght.y-2}).y + CELL_SIZE/2;
+    groundY = GetOnInverseGridPosition((Vector2){0, 2}).y + CELL_SIZE/2;
     
     // Set gravity
     gravity[0].direction = (Vector2){0, 1};
-    gravity[0].value = 1;
+    gravity[0].value = 0.92f;
     gravity[0].force = Vector2FloatProduct(gravity[0].direction, gravity[0].value);
     
     gravity[1].direction = (Vector2){0, 1};
@@ -212,66 +226,45 @@ void InitGameplayScreen(void)
     gravity[1].force = Vector2FloatProduct(gravity[1].direction, gravity[1].value);
     
     // Set camera
-    camera.position = Vector2Zero();
-    camera.direction = Vector2Right();
-    camera.speed = (Vector2){5.45f, 0};
-    camera.isMoving = false;
+    gameElementsCamera.position = Vector2Zero();
+    gameElementsCamera.direction = Vector2Right();
+    gameElementsCamera.speed = (Vector2){5.5f, 0};
+    gameElementsCamera.isMoving = false;
+    
+    mainCamera.position = Vector2Zero();
+    mainCamera.direction = Vector2Up();
+    mainCamera.speed = (Vector2){0, 1};
+    mainCamera.isMoving = false;
+    
+    onCameraAuxPosition = Vector2Zero();
     
     isGameplayStopped = true;
     
     // Counter on player dead (before level reset)
     deadCounter = 0;
-    deadSpan = 1.2f * GAME_SPEED;
+    deadSpan = 0.5f * GAME_SPEED;
     deadFadeAlpha = 0;
     deadFadeIn = true;
     isDeadFadeFinished = true;
     
     attemptsCounter = 1;
     isAttemptsCounterActive = true;
+    attemptsCounterSourcePosition = GetOnInverseGridPosition((Vector2){9, 10});
+    attemptsCounterPosition = attemptsCounterSourcePosition;
     
     isGamePaused = false;
     
-    InitPlayer(&player, (Vector2){5, gridLenght.y-2}, (Vector2){0, 14.5f}, 0.7f * GAME_SPEED);
+    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 14}, 0.7f * GAME_SPEED);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
-    
-    for (int i=0; i<3; i++)
-    {
-        tris[i].transform.position = GetOnGridPosition((Vector2) {200 + i, gridLenght.y-2});
-        if (i==2) tris[i].transform.position = GetOnGridPosition((Vector2) {250 + i * 5, gridLenght.y-2});
-        tris[i].transform.scale = 1;
-        tris[i].transform.rotation = 0;
-        trisSourcePosition[i] = tris[i].transform.position;
-        
-        InitSATTri(&tris[i].collider.tri, tris[i].transform.position, (Vector2){trisTexture.width, trisTexture.height}, tris[i].transform.rotation);
-        tris[i].collider.isActive = false;
-    
-        tris[i].state.isActive = true;
-        tris[i].state.isInScreen = false;
-        tris[i].state.isUp = true;
-    }
-    
+
+    UpdateCustomAASATTriPosition(&tris[0].collider.tri, tris[0].transform.position);
     SetNormals(tris[0].collider.tri.points, triNormals, 3, true);
     
     // Init platfsorms
     platfsTexture = LoadTexture("assets/gameplay/platf_main.png");
-    
-    for (int i=0; i<3; i++)
-    {
-        platfs[i].transform.position = GetOnGridPosition((Vector2) {18 + i*20, gridLenght.y-2});
-        platfs[i].transform.scale = 1;
-        platfs[i].transform.rotation = 0;
-        platfsSourcePosition[i] = platfs[i].transform.position;
-        
-        InitSATBox(&platfs[i].collider.box, platfs[i].transform.position, (Vector2){platfsTexture.width, platfsTexture.height}, platfs[i].transform.rotation);
-        platfs[i].collider.isActive = false;
-    
-        platfs[i].state.isActive = true;
-        platfs[i].state.isInScreen = false;
-        platfs[i].state.isUp = true;
-    }
-    
+
     // Set AACube normals (Right/Left + Up/Down)
     platfNormals[0] = Vector2Up();
     platfNormals[1] = Vector2Right();
@@ -291,12 +284,26 @@ void UpdateGameplayScreen(void)
             {
                 if (player.isAlive)
                 {
-                    camera.position = Vector2Add(camera.position, Vector2Product(camera.direction, camera.speed));
-                    //printf("%f\n", camera.position.x);
+                    // Update camera
+                    gameElementsCamera.position = Vector2Add(gameElementsCamera.position, Vector2Product(gameElementsCamera.direction, gameElementsCamera.speed));
+                    
+                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/2.5f)
+                    {
+                        //if (player.transform.position.y - mainCamera.position.y > (float)GetScreenHeight()/) 
+                        //{
+                            mainCamera.position = Vector2Sub(mainCamera.position, Vector2Product(mainCamera.speed, mainCamera.direction));
+                        //}
+                    }
+                    else if (mainCamera.position.y < 0)
+                    {
+                        mainCamera.position = Vector2Add(mainCamera.position, Vector2Product(mainCamera.speed, mainCamera.direction));
+                    }
+                    else if (mainCamera.position.y > 0) mainCamera.position.y = 0;
+                        
 
                     // Update game objects position before checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
-                    UpdateTris(tris, trisSourcePosition, player.transform.position, camera);
-                    UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, camera); 
+                    UpdateTris(tris, trisSourcePosition, player.transform.position, gameElementsCamera);
+                    UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, gameElementsCamera); 
                     UpdatePlayer(&player);
                     
                     // Check if player landed on the ground
@@ -306,9 +313,16 @@ void UpdateGameplayScreen(void)
                     // Check if player landed (or collided) on a platfsorm.
                     CheckPlayerPlatfsCollision(&player, platfs);
                     
+                    if (gameElementsCamera.position.x/CELL_SIZE > gridLenght.x + 10) finishScreen = 1;
+                    
                     if (isAttemptsCounterActive)
                     {
-                        
+                        attemptsCounterPosition = Vector2Sub (attemptsCounterSourcePosition, gameElementsCamera.position);
+                        if (attemptsCounterPosition.x < -500)
+                        {
+                            attemptsCounterPosition = attemptsCounterSourcePosition;
+                            isAttemptsCounterActive = false;
+                        }
                     }
                 }
                 else
@@ -330,7 +344,8 @@ void UpdateGameplayScreen(void)
                 {
                     // Start gameplay (first time or after player dies)
                     isGameplayStopped = false;
-                    camera.isMoving = true;
+                    gameElementsCamera.isMoving = true;
+                    mainCamera.isMoving = true;
                 }
             }
         }
@@ -350,21 +365,32 @@ void UpdateGameplayScreen(void)
 void DrawGameplayScreen(void)
 {
     // Draw Ground
-    DrawRectangle(0, groundY, GetScreenWidth(), 2, BLACK);
+    DrawRectangle(0, GetOnCameraPosition((Vector2){0, groundY}, mainCamera).y, GetScreenWidth(), 2, BLACK);
     
     // Draw Game Grid
     for (int i=0; i<gridLenght.x+1; i++) DrawRectangle(i*CELL_SIZE, 0, 1, GetScreenHeight(), LIGHTGRAY); // Columns
     for (int i=0; i<gridLenght.y; i++) DrawRectangle(0, i*CELL_SIZE, GetScreenWidth(), 1, LIGHTGRAY); // Rows
     
     // Draw Tris
-    for (int i=0; i<3; i++)
+    for (int i=0; i<maxTris; i++)
     {
-        DrawTexturePro(trisTexture, (Rectangle){0, 0, trisTexture.width, trisTexture.height}, (Rectangle){tris[i].transform.position.x, tris[i].transform.position.y, 
-        trisTexture.width, trisTexture.height}, (Vector2){trisTexture.width/2, trisTexture.height/2}, tris[i].transform.rotation, WHITE);
+        onCameraAuxPosition = GetOnCameraPosition(tris[i].transform.position, mainCamera);
         
-        DrawTexturePro(platfsTexture, (Rectangle){0, 0, platfsTexture.width, platfsTexture.height}, (Rectangle){platfs[i].transform.position.x, platfs[i].transform.position.y, 
-        platfsTexture.width, platfsTexture.height}, (Vector2){platfsTexture.width/2, platfsTexture.height/2}, platfs[i].transform.rotation, WHITE);
+        DrawTexturePro(trisTexture, (Rectangle){0, 0, CELL_SIZE/2, CELL_SIZE/2}, (Rectangle){onCameraAuxPosition.x, 
+        onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
+        tris[i].transform.rotation, WHITE);
     }
+    
+    for (int i=0; i<maxPlatfs; i++)
+    {
+        onCameraAuxPosition = GetOnCameraPosition(platfs[i].transform.position, mainCamera);
+        
+        DrawTexturePro(platfsTexture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
+        onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
+        platfs[i].transform.rotation, WHITE);
+    }
+    
+    if (isAttemptsCounterActive) DrawText(FormatText("%i", attemptsCounter), attemptsCounterPosition.x, attemptsCounterPosition.y, 150, DARKGRAY);
     
     DrawPlayer(player);
     
@@ -384,6 +410,11 @@ void DrawGameplayScreen(void)
 // Gameplay Screen Unload logic
 void UnloadGameplayScreen(void)
 {
+    free(tris);
+    free(platfs);
+    free(trisSourcePosition);
+    free(platfsSourcePosition);
+    
     UnloadTexture(player.texture);
     UnloadTexture(trisTexture);
     UnloadTexture(platfsTexture);
@@ -401,14 +432,23 @@ Vector2 GetOnGridPosition(Vector2 coordinates)
     Vector2 position;
     Vector2Scale(&coordinates, CELL_SIZE);
     position.x = coordinates.x + CELL_SIZE/2;
-    position.y = coordinates.y + CELL_SIZE/2;
+    position.y = coordinates.y - CELL_SIZE/2;
+    return position; 
+}
+
+Vector2 GetOnInverseGridPosition(Vector2 coordinates)
+{
+    Vector2 position;
+    Vector2Scale(&coordinates, CELL_SIZE);
+    position.x = coordinates.x + CELL_SIZE/2;
+    position.y = GetScreenHeight() - coordinates.y - CELL_SIZE/2;
     return position; 
 }
 
 void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpan)
 {
     // Init p transform
-    p->transform.position = GetOnGridPosition(coordinates);
+    p->transform.position = GetOnInverseGridPosition(coordinates);
     p->transform.rotation = 0;
     p->transform.scale = 1;
     
@@ -458,7 +498,7 @@ void UpdatePlayer(Player *p)
     else
     {
         // Check jump key
-        if (IsKeyPressed(KEY_SPACE)) 
+        if (IsKeyDown(KEY_SPACE)) 
         {
             p->dynamic.isGrounded = false;
             p->dynamic.isJumping = true;
@@ -524,14 +564,21 @@ void SetPlayerAsGrounded(Player *p, int landPositionY)
 
 void DrawPlayer (Player p)
 {
-    DrawTexturePro(p.texture, (Rectangle){0, 0, p.texture.width, p.texture.height}, (Rectangle){p.transform.position.x, 
-    p.transform.position.y, p.texture.width, p.texture.height}, (Vector2){p.texture.width/2, 
-    p.texture.height/2}, -p.transform.rotation, p.color);
+    onCameraAuxPosition = GetOnCameraPosition(p.transform.position, mainCamera);
+    
+    DrawTexturePro(p.texture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
+    onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, 
+    CELL_SIZE/2}, -p.transform.rotation, p.color);
 }
 
 void SetOnCameraPosition (Vector2 *position, Vector2 sourcePosition, Camera2D camera)
 {
     *position = Vector2Sub(sourcePosition, camera.position);
+}
+
+Vector2 GetOnCameraPosition (Vector2 position, Camera2D camera)
+{
+    return Vector2Sub(position, camera.position);
 }
 
 void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D camera)
@@ -559,7 +606,7 @@ void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 s
 
 void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera)
 {
-    for (int i=0; i<3; i++)
+    for (int i=0; i<maxTris; i++)
     {
         if (tris[i].state.isActive)
         {
@@ -571,7 +618,7 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
                 tris[i].collider.isActive = true;
                 
                 // Update collider position
-                UpdateAASATTriPosition(&tris[i].collider.tri, tris[i].transform.position);
+                UpdateCustomAASATTriPosition(&tris[i].collider.tri, tris[i].transform.position);
             }
             else if (tris[i].state.isInScreen && tris[i].transform.position.x + CELL_SIZE*1.5f < player.transform.position.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
             {
@@ -584,7 +631,7 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
 
 void CheckPlayerTrisCollision (Player *p, TriGameObject *tris)
 {
-    for (int i=0; i<3; i++)
+    for (int i=0; i<maxTris; i++)
     {
         if (tris[i].collider.isActive)
         {
@@ -600,7 +647,7 @@ void CheckPlayerTrisCollision (Player *p, TriGameObject *tris)
 
 void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera)
 {
-    for (int i=0; i<3; i++)
+    for (int i=0; i<maxPlatfs; i++)
     {
         if (platfs[i].state.isActive)
         {
@@ -625,7 +672,7 @@ void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playe
 
 void CheckPlayerPlatfsCollision (Player *p, BoxGameObject *platfs)
 {
-    for (int i=0; i<3; i++)
+    for (int i=0; i<maxPlatfs; i++)
     {
         if (platfs[i].collider.isActive)
         {
@@ -660,11 +707,13 @@ void ResetGameplay ()
             deadFadeIn = false;
             
             // Reset variables 
-            camera.position = Vector2Zero();
+            gameElementsCamera.position = Vector2Zero();
             isGameplayStopped = true;
             deadCounter = 0;
             
-            player.transform.position = GetOnGridPosition((Vector2){5, gridLenght.y-2});
+            mainCamera.position = Vector2Zero();
+            
+            player.transform.position = GetOnInverseGridPosition((Vector2){5, 2});
             player.transform.rotation = 0;
             player.transform.scale = 1;
             
@@ -678,24 +727,27 @@ void ResetGameplay ()
             player.rotationEasing.b = 0;
             player.rotationEasing.isFinished = true;
             
+            isAttemptsCounterActive = true;
+            attemptsCounterPosition = attemptsCounterSourcePosition;
+            attemptsCounter++;
             
             UpdateSATBox(&player.collider.box, player.transform.position, Vector2FloatProduct(player.collider.box.size, player.transform.scale), player.transform.rotation);
             
             player.isAlive = true;
             
-            for (int i=0; i<3; i++)
+            for (int i=0; i<maxTris; i++)
             {
                 tris[i].state.isActive = true;
                 tris[i].collider.isActive = false;
             }
-            UpdateTris(tris, trisSourcePosition, player.transform.position, camera);
+            UpdateTris(tris, trisSourcePosition, player.transform.position, gameElementsCamera);
             
-            for (int i=0; i<3; i++)
+            for (int i=0; i<maxPlatfs; i++)
             {
                 platfs[i].state.isActive = true;
                 platfs[i].collider.isActive = false;
             }
-            UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, camera); 
+            UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, gameElementsCamera); 
         }
         else deadFadeAlpha += 0.05f;
     }
@@ -711,5 +763,122 @@ void ResetGameplay ()
         {
             deadFadeAlpha -= 0.075f;
         }
+    }
+}
+
+void InitTri(int index, Vector2 coordinates, int yGridLenght)
+{
+        tris[index].transform.position = GetOnGridPosition(coordinates);
+        tris[index].transform.position.y -= yGridLenght * CELL_SIZE - GetScreenHeight();
+        tris[index].transform.scale = 1;
+        tris[index].transform.rotation = 0;
+        trisSourcePosition[index] = tris[index].transform.position;
+        
+        InitSATTri(&tris[index].collider.tri, tris[index].transform.position, (Vector2){CELL_SIZE, CELL_SIZE}, tris[index].transform.rotation);
+        tris[index].collider.isActive = false;
+    
+        tris[index].state.isActive = true;
+        tris[index].state.isInScreen = false;
+        tris[index].state.isUp = true;
+}
+
+void InitPlatf(int index, Vector2 coordinates, int yGridLenght)
+{
+    platfs[index].transform.position = GetOnGridPosition(coordinates);
+    platfs[index].transform.position.y -= yGridLenght * CELL_SIZE - GetScreenHeight();
+    platfs[index].transform.scale = 1;
+    platfs[index].transform.rotation = 0;
+    platfsSourcePosition[index] = platfs[index].transform.position;
+
+    InitSATBox(&platfs[index].collider.box, platfs[index].transform.position, (Vector2){CELL_SIZE, CELL_SIZE}, platfs[index].transform.rotation);
+    platfs[index].collider.isActive = false;
+
+    platfs[index].state.isActive = true;
+    platfs[index].state.isInScreen = false;
+    platfs[index].state.isUp = true;
+}
+
+void LoadMap ()
+{
+    Image mapImage;
+    Color *mapImagePixels;
+    
+    int trisCounter = 0;
+    int platfsCounter = 0;
+    
+    maxTris = 0;
+    maxPlatfs = 0;
+    
+    mapImage = LoadImage("maps/map_01.bmp");
+    gridLenght.x = mapImage.width;
+    gridLenght.y = mapImage.height;
+    mapImagePixels = malloc(sizeof(Color)*(gridLenght.x*gridLenght.y));
+    
+    mapImagePixels = GetImageData(mapImage);
+    
+    for (int i=0; i<gridLenght.x*gridLenght.y; i++)
+    {
+        if (SameColor(mapImagePixels[i], (Color){255, 0, 0, 255})) maxTris++;
+        else if (SameColor(mapImagePixels[i], (Color){0, 255, 0, 255})) maxPlatfs++;
+    }
+    
+    tris = malloc(sizeof(TriGameObject) * maxTris);
+    trisSourcePosition = malloc(sizeof(TriGameObject) * maxTris);
+    platfs = malloc(sizeof(BoxGameObject) * maxPlatfs);
+    platfsSourcePosition = malloc(sizeof(BoxGameObject) * maxPlatfs);
+    
+    for (int y=0; y<gridLenght.y; y++)
+    {
+        for (int x=0; x<gridLenght.x; x++)
+        {
+            if (SameColor(mapImagePixels[y*(int)gridLenght.x+x], (Color){255, 0, 0, 255}))
+            {
+                // Init tri
+                InitTri(trisCounter, (Vector2){x, y}, gridLenght.y-1);
+                trisCounter++;
+            }
+            else if (SameColor(mapImagePixels[y*(int)gridLenght.x+x], (Color){0, 255, 0, 255}))
+            {
+                // Init platf
+                InitPlatf(platfsCounter, (Vector2){x, y}, gridLenght.y-1);
+                platfsCounter++;
+            }
+        }
+    }
+    
+    printf("Tris: %i\n", maxTris);
+    
+    free(mapImagePixels);
+    UnloadImage(mapImage);
+}
+
+bool SameColor(Color a, Color b)
+{
+    if (a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a)
+    {
+        return true;
+    }
+    return false;
+}
+
+void UpdateCustomAASATTriPosition (SATTri *tri, Vector2 position)
+{
+    if (tri->position.x != position.x || tri->position.y != position.y)
+    {
+        Vector2 size;
+        
+        tri->position = position;
+        size = tri->size;
+        
+        // Set half-size for faster use on points asignation
+        Vector2Scale(&size, 0.5f);
+        
+        // Set tri corners position
+        tri->points[0] = Vector2Add(tri->position, Vector2Product((Vector2){-1, 1}, size));
+        tri->points[1] = Vector2Add(tri->position, Vector2Product((Vector2){0, -1}, size));
+        tri->points[2] = Vector2Add(tri->position, Vector2Product((Vector2){1, 1}, size));
+        
+        // Set top point 1 pixel down
+        tri->points[1].y+= 1;
     }
 }

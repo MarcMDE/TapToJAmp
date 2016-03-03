@@ -1,5 +1,6 @@
 # Object files
 *.o
+*.bc 
 *.ko
 *.obj
 *.elf
@@ -35,3 +36,4 @@
 assets
 libraries
 resources
+maps

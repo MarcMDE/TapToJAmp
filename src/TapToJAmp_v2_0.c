@@ -34,6 +34,12 @@
 #include "raylib.h"
 #include "screens/screens.h"    // NOTE: Defines global variable: currentScreen
 
+#define DEBUG
+
+#if defined(PLATFORM_WEB)
+    #include <emscripten/emscripten.h>
+#endif
+
 //----------------------------------------------------------------------------------
 // Global Variables Definition (local to this module)
 //----------------------------------------------------------------------------------
@@ -52,6 +58,7 @@ float alphaDiff = 0.05f;
 void TransitionToScreen(int screen);
 void UpdateTransition(void);
 void DrawTransition(void);
+void UpdateDrawFrame();
 
 //----------------------------------------------------------------------------------
 // Main entry point
@@ -66,16 +73,19 @@ int main(void)
     
     InitWindow(screenWidth, screenHeight, windowTitle);
 
-    // TODO: Load global data here (assets that must be available in all screens, i.e. fonts)
-    
-    // Setup and Init first screen
-    /*
-    InitLoadingScreen();
-    currentScreen = LOADING;
-    */
+    #if defined(DEBUG)
     // DEBUG
     InitTitleScreen();
     currentScreen = TITLE;
+    #else
+    // Setup and Init first screen
+    InitLoadingScreen();
+    currentScreen = LOADING;
+    #endif
+    
+    #if defined(PLATFORM_WEB)
+    emscripten_set_main_loop(UpdateDrawFrame, 0, 1);
+    #else
     
 	SetTargetFPS(60);
 	//----------------------------------------------------------
@@ -83,90 +93,9 @@ int main(void)
     // Main game loop
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
-        // Update
-        //----------------------------------------------------------------------------------
-        if (!onTransition)
-        {
-            switch(currentScreen) 
-            {                
-                case LOADING:
-                {
-                    UpdateLoadingScreen();
-                    
-                    if (FinishLoadingScreen()) TransitionToScreen(LOGO);
-                    
-                } break;
-                case LOGO: 
-                {
-                    UpdateLogoScreen();
-                    
-                    if (FinishLogoScreen()) TransitionToScreen(TITLE);
-                    
-                } break;
-                case TITLE: 
-                {
-                    UpdateTitleScreen();
-                    
-                    if (FinishTitleScreen() == 1) TransitionToScreen(OPTIONS);
-                    else if (FinishTitleScreen() == 2) TransitionToScreen(GAMEPLAY);
-
-                } break;
-                case OPTIONS:
-                {
-                    UpdateOptionsScreen();
-                    
-                    if (FinishOptionsScreen()) TransitionToScreen(TITLE);
-
-                } break;
-                case GAMEPLAY:
-                { 
-                    UpdateGameplayScreen();
-                    
-                    if (FinishGameplayScreen()) TransitionToScreen(ENDING);
-  
-                } break;
-                case ENDING: 
-                {
-                    UpdateEndingScreen();
-                    
-                    if (FinishEndingScreen()) TransitionToScreen(TITLE);
-
-                } break;
-                default: break;
-            }
-        }
-        else
-        {
-            // Update transition (fade-in, fade-out)
-            UpdateTransition();
-        }
-        //----------------------------------------------------------------------------------
-        
-        // Draw
-        //----------------------------------------------------------------------------------
-        BeginDrawing();
-        
-            ClearBackground(RAYWHITE);
-            
-            switch(currentScreen) 
-            {
-                case LOADING: DrawLoadingScreen(); break;
-                case LOGO: DrawLogoScreen(); break;
-                case TITLE: DrawTitleScreen(); break;
-                case OPTIONS: DrawOptionsScreen(); break;
-                case GAMEPLAY: DrawGameplayScreen(); break;
-                case ENDING: DrawEndingScreen(); break;
-                default: break;
-            }
-            
-            if (onTransition) DrawTransition();
-        
-            DrawFPS(screenWidth - 80, 5);
-        
-        EndDrawing();
-        //----------------------------------------------------------------------------------
+        UpdateDrawFrame();
     }
-
+    #endif
     // De-Initialization
     //--------------------------------------------------------------------------------------
     
@@ -262,4 +191,90 @@ void UpdateTransition(void)
 void DrawTransition(void)
 {
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, transAlpha));
+}
+
+void UpdateDrawFrame()
+{
+    // Update
+    //----------------------------------------------------------------------------------
+    if (!onTransition)
+    {
+        switch(currentScreen) 
+        {                
+            case LOADING:
+            {
+                UpdateLoadingScreen();
+                
+                if (FinishLoadingScreen()) TransitionToScreen(LOGO);
+                
+            } break;
+            case LOGO: 
+            {
+                UpdateLogoScreen();
+                
+                if (FinishLogoScreen()) TransitionToScreen(TITLE);
+                
+            } break;
+            case TITLE: 
+            {
+                UpdateTitleScreen();
+                
+                if (FinishTitleScreen() == 1) TransitionToScreen(OPTIONS);
+                else if (FinishTitleScreen() == 2) TransitionToScreen(GAMEPLAY);
+
+            } break;
+            case OPTIONS:
+            {
+                UpdateOptionsScreen();
+                
+                if (FinishOptionsScreen()) TransitionToScreen(TITLE);
+
+            } break;
+            case GAMEPLAY:
+            { 
+                UpdateGameplayScreen();
+                
+                if (FinishGameplayScreen()) TransitionToScreen(ENDING);
+
+            } break;
+            case ENDING: 
+            {
+                UpdateEndingScreen();
+                
+                if (FinishEndingScreen()) TransitionToScreen(TITLE);
+
+            } break;
+            default: break;
+        }
+    }
+    else
+    {
+        // Update transition (fade-in, fade-out)
+        UpdateTransition();
+    }
+    //----------------------------------------------------------------------------------
+    
+    // Draw
+    //----------------------------------------------------------------------------------
+    BeginDrawing();
+    
+        ClearBackground(RAYWHITE);
+        
+        switch(currentScreen) 
+        {
+            case LOADING: DrawLoadingScreen(); break;
+            case LOGO: DrawLogoScreen(); break;
+            case TITLE: DrawTitleScreen(); break;
+            case OPTIONS: DrawOptionsScreen(); break;
+            case GAMEPLAY: DrawGameplayScreen(); break;
+            case ENDING: DrawEndingScreen(); break;
+            default: break;
+        }
+        
+        if (onTransition) DrawTransition();
+    
+        DrawFPS(GetScreenWidth() - 80, 5);
+    
+    EndDrawing();
+    //----------------------------------------------------------------------------------
 }

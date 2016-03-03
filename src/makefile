@@ -74,7 +74,7 @@ else
     CFLAGS = -O2 -Wall -std=c99
 endif
 ifeq ($(PLATFORM),PLATFORM_WEB)
-    CFLAGS = -O1 -Wall -std=c99 -s USE_GLFW=3 -s ASSERTIONS=1 --preload-file resources
+    CFLAGS = -O1 -Wall -std=c99 -s USE_GLFW=3 -s ASSERTIONS=1 --preload-file assets --preload-file maps
     #-s ALLOW_MEMORY_GROWTH=1   # to allow memory resizing
     #-s TOTAL_MEMORY=16777216   # to specify heap memory size (default = 16MB)
 endif
@@ -138,7 +138,7 @@ ifeq ($(PLATFORM),PLATFORM_RPI)
     LIBS = -lraylib -lGLESv2 -lEGL -lpthread -lrt -lm -lbcm_host -lopenal
 endif
 ifeq ($(PLATFORM),PLATFORM_WEB)
-    LIBS = ../../src/libraylib.bc
+    LIBS = libraries/libraylib.bc libraries/satcollision.bc libraries/c2dmath.bc libraries/ceasings.bc
 endif
 
 # define additional parameters and flags for windows
