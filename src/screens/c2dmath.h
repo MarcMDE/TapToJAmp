@@ -31,6 +31,7 @@
 extern "C" {            // Prevents name mangling of functions
 #endif
 
+float FloatLerp(float current, float target, float change);
 Vector2 Vector2Add(Vector2 a, Vector2 b);
 Vector2 Vector2Sub(Vector2 a, Vector2 b);
 Vector2 Vector2Product(Vector2 a, Vector2 b);

@@ -254,7 +254,7 @@ void InitGameplayScreen(void)
     
     isGamePaused = false;
     
-    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 14}, 0.7f * GAME_SPEED);
+    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 14}, 0.6f * GAME_SPEED);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
@@ -287,18 +287,23 @@ void UpdateGameplayScreen(void)
                     // Update camera
                     gameElementsCamera.position = Vector2Add(gameElementsCamera.position, Vector2Product(gameElementsCamera.direction, gameElementsCamera.speed));
                     
-                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/2.5f)
+                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.5f)
                     {
-                        //if (player.transform.position.y - mainCamera.position.y > (float)GetScreenHeight()/) 
-                        //{
-                            mainCamera.position = Vector2Sub(mainCamera.position, Vector2Product(mainCamera.speed, mainCamera.direction));
-                        //}
+                        mainCamera.speed.y = 2;
+  
+                        if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.75f) mainCamera.position.y = FloatLerp(mainCamera.position.y, player.transform.position.y - (float)GetScreenHeight()/1.75f, mainCamera.speed.y);
+
                     }
                     else if (mainCamera.position.y < 0)
                     {
-                        mainCamera.position = Vector2Add(mainCamera.position, Vector2Product(mainCamera.speed, mainCamera.direction));
+                        if (!player.dynamic.isJumping) mainCamera.speed.y += 1;
+                        mainCamera.position.y = FloatLerp(mainCamera.position.y, 0, mainCamera.speed.y/5);
                     }
-                    else if (mainCamera.position.y > 0) mainCamera.position.y = 0;
+                    else if (mainCamera.position.y > 0) 
+                    {
+                        mainCamera.position.y = 0;
+                        mainCamera.speed.y = 2;
+                    }
                         
 
                     // Update game objects position before checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
