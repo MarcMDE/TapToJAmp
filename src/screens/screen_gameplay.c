@@ -131,6 +131,37 @@ typedef struct GravityForce
     float value;
     Vector2 force;
 }GravityForce;
+
+typedef struct Particle
+{
+    Transform2D transform;
+    Transform2D translation;
+    Vector2 direction;
+    int lifeTime;
+    Color color;
+    isAlive;
+} Particle;
+
+typedef struct SourceParticle
+{
+    Transform2D Transform[2];
+    Transform2D Translation[2];
+    Vector2 direction[2];
+    int lifeTime[2];
+    Color color;
+} SourceParticle;
+
+typedef struct ParticleEmitter
+{
+    Vector2 position;
+    Vector2 spawnRadius;
+    GravityForce gravity;
+    int pps; // ParticlesPerSecond
+    int framesCounter;
+    int particlesCounter;
+    SourceParticle source;
+    Particle *particles; // Remember to free
+}
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
