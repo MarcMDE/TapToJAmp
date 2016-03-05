@@ -139,7 +139,7 @@ typedef struct Particle
     Vector2 direction;
     int lifeTime;
     Color color;
-    isAlive;
+    bool isAlive;
 } Particle;
 
 typedef struct SourceParticle
@@ -161,7 +161,7 @@ typedef struct ParticleEmitter
     int particlesCounter;
     SourceParticle source;
     Particle *particles; // Remember to free
-}
+} ParticleEmitter;
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -234,6 +234,7 @@ void InitPlatf(int index, Vector2 coordinates, int yGridLenght);
 void LoadMap();
 bool SameColor(Color a, Color b);
 void UpdateCustomAASATTriPosition (SATTri *tri, Vector2 position);
+void UpdateCustomAASATBoxPosition (SATBox *box, Vector2 position);
 //----------------------------------------------------------------------------------
 
 // Gameplay Screen Initialization logic
@@ -289,12 +290,14 @@ void InitGameplayScreen(void)
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
+    UpdateTris(tris, trisSourcePosition, player.transform.position, gameElementsCamera); // Set them as visible if on screen
 
     UpdateCustomAASATTriPosition(&tris[0].collider.tri, tris[0].transform.position);
     SetNormals(tris[0].collider.tri.points, triNormals, 3, true);
     
     // Init platfsorms
     platfsTexture = LoadTexture("assets/gameplay/platf_main.png");
+    UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, gameElementsCamera); // Set them as visible if on screen
 
     // Set AACube normals (Right/Left + Up/Down)
     platfNormals[0] = Vector2Up();
@@ -328,7 +331,7 @@ void UpdateGameplayScreen(void)
                     else if (mainCamera.position.y < 0)
                     {
                         if (!player.dynamic.isJumping) mainCamera.speed.y += 1;
-                        mainCamera.position.y = FloatLerp(mainCamera.position.y, 0, mainCamera.speed.y/5);
+                        mainCamera.position.y = FloatLerp(mainCamera.position.y, 0, mainCamera.speed.y);
                     }
                     else if (mainCamera.position.y > 0) 
                     {
@@ -410,20 +413,34 @@ void DrawGameplayScreen(void)
     // Draw Tris
     for (int i=0; i<maxTris; i++)
     {
-        onCameraAuxPosition = GetOnCameraPosition(tris[i].transform.position, mainCamera);
-        
-        DrawTexturePro(trisTexture, (Rectangle){0, 0, CELL_SIZE/2, CELL_SIZE/2}, (Rectangle){onCameraAuxPosition.x, 
-        onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
-        tris[i].transform.rotation, WHITE);
+        if(tris[i].state.isInScreen) 
+        {
+            onCameraAuxPosition = GetOnCameraPosition(tris[i].transform.position, mainCamera);
+            
+            DrawTexturePro(trisTexture, (Rectangle){0, 0, CELL_SIZE/2, CELL_SIZE/2}, (Rectangle){onCameraAuxPosition.x, 
+            onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
+            tris[i].transform.rotation, WHITE);
+        }
     }
     
     for (int i=0; i<maxPlatfs; i++)
     {
-        onCameraAuxPosition = GetOnCameraPosition(platfs[i].transform.position, mainCamera);
+        if(platfs[i].state.isInScreen) 
+        {
+            onCameraAuxPosition = GetOnCameraPosition(platfs[i].transform.position, mainCamera);
+            
+            DrawTexturePro(platfsTexture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
+            onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
+            platfs[i].transform.rotation, WHITE);
+        }
         
-        DrawTexturePro(platfsTexture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
-        onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
-        platfs[i].transform.rotation, WHITE);
+        /*
+        for (int j=0; j<4; j++)
+        {
+            onCameraAuxPosition = GetOnCameraPosition(platfs[i].collider.box.points[j], mainCamera);
+            if (platfs[i].collider.isActive) DrawCircleV(onCameraAuxPosition, 5, GREEN);
+        }
+        */
     }
     
     if (isAttemptsCounterActive) DrawText(FormatText("%i", attemptsCounter), attemptsCounterPosition.x, attemptsCounterPosition.y, 150, DARKGRAY);
@@ -689,19 +706,16 @@ void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playe
         {
             UpdateOnCameraGameObject(&platfs[i].transform.position, &platfs[i].state, sourcePosition[i], camera);
             
-            if (platfs[i].state.isInScreen && platfs[i].transform.position.x-CELL_SIZE*1.5f < playerPosition.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
+            if (platfs[i].state.isInScreen && platfs[i].transform.position.x - CELL_SIZE * 1.5f < playerPosition.x && 
+            platfs[i].transform.position.x + CELL_SIZE * 1.5f > player.transform.position.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
             {
-                // Tri is on the player "colision zone"
+                // Platf is on the player "colision zone"
                 platfs[i].collider.isActive = true;
                 
                 // Update collider position
-                UpdateAASATBoxPosition(&platfs[i].collider.box, platfs[i].transform.position);
+                UpdateCustomAASATBoxPosition(&platfs[i].collider.box, platfs[i].transform.position);
             }
-            else if (platfs[i].state.isInScreen && platfs[i].transform.position.x + CELL_SIZE*1.5f < player.transform.position.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
-            {
-                // Platf is out the player "colision zone"
-                platfs[i].collider.isActive = false;
-            }
+            else platfs[i].collider.isActive = false;
         }
     }
 }
@@ -916,5 +930,27 @@ void UpdateCustomAASATTriPosition (SATTri *tri, Vector2 position)
         
         // Set top point 1 pixel down
         tri->points[1].y+= 1;
+    }
+}
+
+void UpdateCustomAASATBoxPosition (SATBox *box, Vector2 position)
+{
+    if (box->position.x != position.x || box->position.y != position.y)
+    {
+        Vector2 size;
+        
+        box->position = position;
+        size = box->size;
+        
+        Vector2Scale(&size, 0.5f);
+        
+        box->points[0] = Vector2Sub(box->position, Vector2Product(Vector2One(), size));
+        box->points[1] = Vector2Add(box->position, Vector2Product((Vector2){1, -1}, size));
+        box->points[2] = Vector2Add(box->position, Vector2Product(Vector2One(), size));
+        box->points[3] = Vector2Sub(box->position, Vector2Product((Vector2){1, -1}, size));
+        
+        // Set box bot points 1 pexel up 
+        box->points[2].y-=1;
+        box->points[3].y-=1;
     }
 }
