@@ -102,6 +102,7 @@ typedef struct Player
     bool isAlive;
     Texture2D texture;
     Color color;
+    ParticleEmitter pEmitter;
 }Player;
 
 typedef struct ObjectStates
@@ -135,18 +136,21 @@ typedef struct GravityForce
 typedef struct Particle
 {
     Transform2D transform;
-    Transform2D translation;
     Vector2 direction;
+    Vector2 movementSpeed;
+    float rotationSpeed;
+    float scaleSpeed;
     int lifeTime;
     Color color;
-    bool isAlive;
+    bool isActive;
 } Particle;
 
 typedef struct SourceParticle
 {
-    Transform2D Transform[2];
-    Transform2D Translation[2];
     Vector2 direction[2];
+    Vector2 movementSpeed[2];
+    float rotationSpeed[2];
+    float scaleSpeed[2];
     int lifeTime[2];
     Color color;
 } SourceParticle;
@@ -154,13 +158,15 @@ typedef struct SourceParticle
 typedef struct ParticleEmitter
 {
     Vector2 position;
+    Vector2 offset;
     Vector2 spawnRadius;
     GravityForce gravity;
     int pps; // ParticlesPerSecond
     int framesCounter;
     int particlesCounter;
     SourceParticle source;
-    Particle *particles; // Remember to free
+    Particle *particles; // Remember to freeb
+    bool isActive;
 } ParticleEmitter;
 //----------------------------------------------------------------------------------
 
@@ -467,6 +473,7 @@ void UnloadGameplayScreen(void)
     free(platfs);
     free(trisSourcePosition);
     free(platfsSourcePosition);
+    free(player.pEmitter.particles)
     
     UnloadTexture(player.texture);
     UnloadTexture(trisTexture);
@@ -531,6 +538,27 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->rotationEasing.d[0] = rotationSpan;
     p->rotationEasing.d[1] = rotationSpan/2.5f;
     p->rotationEasing.isFinished = true;
+    
+    // Init particles emitter
+    p->pEmitter.offset = (Vector2){-CELL_SIZE/2 + 10, CELL_SIZE/2-10};
+    p->pEmitter.position = Vector2Add(p->transform.position, p->pEmitter.offset);
+    p->pEmitter.spawnRadius = 0;
+    p->pEmitter.gravity.direction = (Vector2){1, 1};
+    p->pEmitter.gravity.value = (Vector2){0.5f, 0.75f};
+    p->pEmitter.gravity.force = Vector2Product(p->pEmitter.gravity.direction,  p->pEmitter.gravity.value);
+    p->pEmitter.pps = 70;
+    p->pEmitter.framesCounter = 0;
+    p->pEmitter.particlesCounter = 0;
+    
+    // particle emitter source particle
+    p->pEmitter.source.direction[0] = (Vector2){-1, 0};
+    p->pEmitter.source.direction[1] = (Vector2){-1, -0.2f};
+    p->pEmitter.source.movementSpeed[0] = (Vector2){2, 0};
+    p->pEmitter.source.movementSpeed[1] = (Vector2){2, 2};
+    p->pEmitter.source.rotationSpeed[0] = 0.5f;
+    p->pEmitter.source.rotationSpeed[1] = 2;
+    p->pEmitter.particles = malloc(sizeof(Particle)*200); // Remember to free
+    
     
     p->isAlive = true;
 }
