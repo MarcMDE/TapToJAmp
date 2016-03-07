@@ -37,9 +37,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h> // RAND_MAX
 
 #define GAME_SPEED 60
-
+#define PLAYER_PARTICLES 130
 #define CELL_SIZE 48
 #define ASSETS_SCALE 1
 
@@ -147,12 +148,15 @@ typedef struct Particle
 
 typedef struct SourceParticle
 {
+    float rotation[2];
+    float scale[2];
     Vector2 direction[2];
     Vector2 movementSpeed[2];
     float rotationSpeed[2];
     float scaleSpeed[2];
     int lifeTime[2];
     Color color;
+    Texture2D texture;
 } SourceParticle;
 
 typedef struct ParticleEmitter
@@ -161,9 +165,10 @@ typedef struct ParticleEmitter
     Vector2 offset;
     Vector2 spawnRadius;
     GravityForce gravity;
-    int pps; // ParticlesPerSecond
-    int framesCounter;
-    int particlesCounter;
+    float ppf; // ParticlesPerFrame
+    float frameParticles; // Total frame particles
+    float remainingParticles; // Decimal particles left
+    int particlesAmount; // Particles that will be spawned on the current frame
     SourceParticle source;
     Particle *particles; // Remember to freeb
     bool isActive;
@@ -241,6 +246,11 @@ void LoadMap();
 bool SameColor(Color a, Color b);
 void UpdateCustomAASATTriPosition (SATTri *tri, Vector2 position);
 void UpdateCustomAASATBoxPosition (SATBox *box, Vector2 position);
+float GetRandomFloat(float min, float max);
+Vector2 GetRandomVector2(Vector2 v1, Vector2 v2);
+void UpdateParticleEmitter (ParticleEmitter *pE, int maxParticles);
+void InitParticle (Particle *p, SourceParticle s, float spawnRadius, Vector2 pEPosition);
+void UpdateParticle(Particle *p, GravityForce gravity);
 //----------------------------------------------------------------------------------
 
 // Gameplay Screen Initialization logic
@@ -308,6 +318,8 @@ void InitGameplayScreen(void)
     // Set AACube normals (Right/Left + Up/Down)
     platfNormals[0] = Vector2Up();
     platfNormals[1] = Vector2Right();
+    
+    srand(time(NULL)); 
 }
 
 // Gameplay Screen Update logic
@@ -549,6 +561,7 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->pEmitter.pps = 70;
     p->pEmitter.framesCounter = 0;
     p->pEmitter.particlesCounter = 0;
+    p->pEmitter.source.texture = LoadTexture("assets/gameplay/particle_main.png")
     
     // particle emitter source particle
     p->pEmitter.source.direction[0] = (Vector2){-1, 0};
@@ -557,8 +570,15 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->pEmitter.source.movementSpeed[1] = (Vector2){2, 2};
     p->pEmitter.source.rotationSpeed[0] = 0.5f;
     p->pEmitter.source.rotationSpeed[1] = 2;
-    p->pEmitter.particles = malloc(sizeof(Particle)*200); // Remember to free
+    p->pEmitter.source.lifeTime[0] = 1.2f;
+    p->pEmitter.source.lifeTime[1] = 0.7f;
+    p->pEmitter.source.color = GREEN;
+    p->pEmitter.particles = malloc(sizeof(Particle)*PLAYER_PARTICLES); // Remember to free
     
+    for (int i=0; i<PLAYER_PARTICLES; i++)
+    {
+        p->pEmitter.particles[i].isActive = false;
+    }
     
     p->isAlive = true;
 }
@@ -620,6 +640,8 @@ void UpdatePlayer(Player *p)
     
     // Set player isGrounded to false since it has to be checked every frame
     p->dynamic.isGrounded = false; 
+    
+    UpdateParticleEmitter()
 }
 
 void SetPlayerAsGrounded(Player *p, int landPositionY)
@@ -645,6 +667,16 @@ void SetPlayerAsGrounded(Player *p, int landPositionY)
 
 void DrawPlayer (Player p)
 {
+    for (int i=0; i<PLAYER_PARTICLES; i++)
+    {
+        if (pE.particles[i].isActive)
+        {
+            DrawTexturePro(pE.source.texture, (Rectangle){0, 0, pE.source.texture.width, pE.source.height}, (Rectangle){onCameraAuxPosition.x, 
+            onCameraAuxPosition.y, pE.source.texture.width, pE.source.texture.height}, (Vector2){pE.source.texture.width/2, pE.source.texture.height/2}, 
+            -pE.particles[i].transform.rotation, pE.particles[i].color);
+        }
+    }
+    
     onCameraAuxPosition = GetOnCameraPosition(p.transform.position, mainCamera);
     
     DrawTexturePro(p.texture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
@@ -980,5 +1012,74 @@ void UpdateCustomAASATBoxPosition (SATBox *box, Vector2 position)
         // Set box bot points 1 pexel up 
         box->points[2].y-=1;
         box->points[3].y-=1;
+    }
+}
+
+float GetRandomFloat(float min, float max)
+{
+    return (max-min) * ((float)rand() / (float) RAND_MAX) + min;
+}
+
+Vector2 GetRandomVector2(Vector2 v1, Vector2 v2)
+{
+    return (Vector2){GetRandomFloat(v1.x, v2.x), GetRandomFloat(v1.y, v2.y)};
+}
+
+void UpdateParticleEmitter (ParticleEmitter *pE, int maxParticles, Vector2 position)
+{
+    pE->position = position;
+    
+    pE->frameParticles = pE->ppf + pE->remainingParticles;
+    pE->particlesAmount = frameParticles/1;
+    pE->remainingParticles = frameParticles%1;
+    
+    for (int i=0; i<maxParticles; i++)
+    {
+        if (!pE->particles[i].isActive)
+        {
+            // Init particle
+            InitParticle(&pE->particles[i], pE->source, pE->spawnRadius);
+            
+            particlesAmount--;
+            if (particlesAmount <= 0) i=maxParticles;
+        }
+    }
+    
+    for (int i=0; i<maxParticles; i++)
+    {
+        UpdateParticle(pE->particles[i], pE->gravity);
+    }
+}
+
+void InitParticle (Particle *p, SourceParticle s, float spawnRadius, Vector2 pEPosition)
+{   
+    p->transform.position = Vector2Rotate((Vector2){0, GetRandomFloat(0, -spawnRadius)}, GetRandomValue(0, 360), pEPosition);
+    p->transform.rotation = GetRandomFloat(s->rotation[0], s->rotation[1]);
+    p->transform.scale = GetRandomFloat(s->scale[0], s->scale[1]);
+    
+    p->direction = GetRandomVector2(s->direction[0], s->direction[1]);
+    p->movementSpeed = GetRandomVector2(s->movementSpeed[0], s->movementSpeed[1]);
+    p->rotationSpeed = GetRandomVector2(s->rotationSpeed[0], s->rotationSpeed[1]);
+    p->scaleSpeed = GetRandomVector2(s->scaleSpeed[0], s->scaleSpeed[1]);
+    p->lifeTime = GetRandomValue(s->lifeTime[0], s->lifeTime[1]);
+    
+    p->color = s->color;
+    
+    p->isActive = true;
+}
+
+void UpdateParticle(Particle *p, GravityForce gravity)
+{
+    if (p->isActive)
+    {
+        if (p->lifeTime > 0)
+        {
+            p->transform.position = Vector2Add(Vector2Add(p->transform.position, Vector2Product(p->direction, p->movementSpeed)), gravity.force);
+            p->transform.rotation += p->rotationSpeed;
+            p->transform.scale += p->rotationSeed;
+            
+            p->lifeTime--;
+        }
+        else p->isActive = false;
     }
 }
