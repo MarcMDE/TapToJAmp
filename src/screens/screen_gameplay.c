@@ -72,6 +72,12 @@ typedef struct Easing
     bool isFinished;
 }Easing;
 
+typedef struct SimpleEasing
+{
+    float t, b, c, d;
+    bool isFinished;
+}SimpleEasing;
+
 typedef struct DynamicObject
 {
     Vector2 prevPosition; // Previous frame position
@@ -175,7 +181,8 @@ typedef struct Player
     Texture2D texture;
     Color color;
     ParticleEmitter pEmitter;
-    Easing onDeadScaleEasing;
+    SimpleEasing onDeadScaleEasing;
+    int onDeadCircleSize;
     ParticleEmitter onDeadPEmitter;
 }Player;
 //----------------------------------------------------------------------------------
@@ -272,7 +279,7 @@ void InitGameplayScreen(void)
     
     // Set gravity
     gravity[0].direction = (Vector2){0, 1};
-    gravity[0].value = 0.92f;
+    gravity[0].value = 1.15f;
     gravity[0].force = Vector2FloatProduct(gravity[0].direction, gravity[0].value);
     
     gravity[1].direction = (Vector2){0, 1};
@@ -282,12 +289,12 @@ void InitGameplayScreen(void)
     // Set camera
     gameElementsCamera.position = Vector2Zero();
     gameElementsCamera.direction = Vector2Right();
-    gameElementsCamera.speed = (Vector2){5.5f, 0};
+    gameElementsCamera.speed = (Vector2){6.65f, 0};
     gameElementsCamera.isMoving = false;
     
     mainCamera.position = Vector2Zero();
     mainCamera.direction = Vector2Up();
-    mainCamera.speed = (Vector2){0, 4.5f};
+    mainCamera.speed = (Vector2){0, 5.5f};
     mainCamera.isMoving = false;
     
     onCameraAuxPosition = Vector2Zero();
@@ -308,7 +315,7 @@ void InitGameplayScreen(void)
     
     isGamePaused = false;
     
-    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 14}, 0.6f * GAME_SPEED);
+    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 15.75f}, 0.6f * GAME_SPEED);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
@@ -346,17 +353,17 @@ void UpdateGameplayScreen(void)
                     gameElementsCamera.position = Vector2Add(gameElementsCamera.position, Vector2Product(gameElementsCamera.direction, gameElementsCamera.speed));
                     
                     
-                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.2f)
+                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.4f)
                     {
                         mainCamera.speed.y = 4.5f;
-                        if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.4f && !player.dynamic.isJumping) 
+                        if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.6f && !player.dynamic.isJumping) 
                         {
-                            mainCamera.position.y = FloatLerp(mainCamera.position.y, player.transform.position.y - (float)GetScreenHeight()/1.4f, mainCamera.speed.y);
+                            mainCamera.position.y = FloatLerp(mainCamera.position.y, player.transform.position.y - (float)GetScreenHeight()/1.6f, mainCamera.speed.y);
                         }
                     }
                     else if (mainCamera.position.y < 0)
                     {
-                        mainCamera.speed.y += 0.25f;
+                        mainCamera.speed.y += 0.5f;
                         mainCamera.position.y = FloatLerp(mainCamera.position.y, 0, mainCamera.speed.y);
                     }
                     else if (mainCamera.position.y > 0) 
@@ -400,6 +407,9 @@ void UpdateGameplayScreen(void)
                         deadCounter++;
                         // TODO: Add dead explosion effects (anim + sound)
                         UpdateParticleEmitter(&player.onDeadPEmitter, PLAYER_ONDEAD_PARTICLES, player.transform.position);
+                        
+                        player.onDeadScaleEasing.t = deadCounter;
+                        player.onDeadCircleSize = CubicEaseOut(player.onDeadScaleEasing.t, player.onDeadScaleEasing.b, player.onDeadScaleEasing.c, player.onDeadScaleEasing.d);
                     }
                 }
             }
@@ -443,7 +453,7 @@ void DrawGameplayScreen(void)
         {
             onCameraAuxPosition = GetOnCameraPosition(tris[i].transform.position, mainCamera);
             
-            DrawTexturePro(trisTexture, (Rectangle){0, 0, CELL_SIZE/2, CELL_SIZE/2}, (Rectangle){onCameraAuxPosition.x, 
+            DrawTexturePro(trisTexture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
             onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
             tris[i].transform.rotation, WHITE);
         }
@@ -575,19 +585,6 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->pEmitter.remainingParticles = 0;
     p->pEmitter.isBurst = false;
     
-    p->onDeadPEmitter.offset = Vector2Zero();
-    p->onDeadPEmitter.position = p->transform.position;
-    p->onDeadPEmitter.spawnRadius = 0;
-    p->onDeadPEmitter.gravity.direction = Vector2Zero();
-    p->onDeadPEmitter.gravity.value = 0;
-    p->onDeadPEmitter.gravity.force = Vector2FloatProduct(p->onDeadPEmitter.gravity.direction,  p->onDeadPEmitter.gravity.value);
-    p->onDeadPEmitter.ppf = PLAYER_ONDEAD_PARTICLES;
-    p->onDeadPEmitter.frameParticles = 0;
-    p->onDeadPEmitter.particlesAmount = 0;
-    p->onDeadPEmitter.remainingParticles = 0;
-    p->onDeadPEmitter.isBurst = true;
-    
-    
     // particle emitter source particle
     p->pEmitter.source.direction[0] = (Vector2){-1, -1};
     p->pEmitter.source.direction[1] = (Vector2){-1, -1};
@@ -613,7 +610,18 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     {
         p->pEmitter.particles[i].isActive = false;
     }
-    
+
+    p->onDeadPEmitter.offset = Vector2Zero();
+    p->onDeadPEmitter.position = p->transform.position;
+    p->onDeadPEmitter.spawnRadius = 0;
+    p->onDeadPEmitter.gravity.direction = Vector2Zero();
+    p->onDeadPEmitter.gravity.value = 0;
+    p->onDeadPEmitter.gravity.force = Vector2FloatProduct(p->onDeadPEmitter.gravity.direction,  p->onDeadPEmitter.gravity.value);
+    p->onDeadPEmitter.ppf = PLAYER_ONDEAD_PARTICLES;
+    p->onDeadPEmitter.frameParticles = 0;
+    p->onDeadPEmitter.particlesAmount = 0;
+    p->onDeadPEmitter.remainingParticles = 0;
+    p->onDeadPEmitter.isBurst = true;
     
     p->onDeadPEmitter.source.direction[0] = (Vector2){-1, -1};
     p->onDeadPEmitter.source.direction[1] = (Vector2){1, 1};
@@ -627,8 +635,8 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->onDeadPEmitter.source.rotationSpeed[1] = 6;
     p->onDeadPEmitter.source.scaleSpeed[0] = 0.05f;
     p->onDeadPEmitter.source.scaleSpeed[1] = 0.1f;
-    p->onDeadPEmitter.source.lifeTime[0] = 0.7f * GAME_SPEED;
-    p->onDeadPEmitter.source.lifeTime[1] = 0.75f * GAME_SPEED;
+    p->onDeadPEmitter.source.lifeTime[0] = deadSpan;
+    p->onDeadPEmitter.source.lifeTime[1] = deadSpan;
     p->onDeadPEmitter.source.color = (Color){0, 255, 50, 255};
     p->onDeadPEmitter.source.texture = LoadTexture("assets/gameplay/particle_dead.png");
     
@@ -639,6 +647,14 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     {
         p->onDeadPEmitter.particles[i].isActive = false;
     }
+    
+    p->onDeadScaleEasing.isFinished = true;
+    p->onDeadScaleEasing.t = 0;
+    p->onDeadScaleEasing.b = 1;
+    p->onDeadScaleEasing.c = 200;
+    p->onDeadScaleEasing.d = deadSpan;
+    
+    p->onDeadCircleSize = p->onDeadScaleEasing.b;
     
     p->isAlive = true;
 }
@@ -750,6 +766,9 @@ void DrawPlayer (Player p)
     }
     else
     {
+        onCameraAuxPosition = GetOnCameraPosition(p.transform.position, mainCamera);
+        //DrawCircleV(onCameraAuxPosition, p.onDeadCircleSize, Fade(BLUE, 0.4f));
+        
         for (int i=0; i<PLAYER_ONDEAD_PARTICLES; i++)
         {
             if (p.onDeadPEmitter.particles[i].isActive)
@@ -933,6 +952,9 @@ void ResetGameplay ()
                 player.onDeadPEmitter.particles[i].isActive = false;
             }
             
+            player.onDeadScaleEasing.t = 0;
+            player.onDeadCircleSize = 0;
+            
             isAttemptsCounterActive = true;
             attemptsCounterPosition = attemptsCounterSourcePosition;
             attemptsCounter++;
@@ -1015,7 +1037,7 @@ void LoadMap ()
     maxTris = 0;
     maxPlatfs = 0;
     
-    mapImage = LoadImage("maps/map_01.bmp");
+    mapImage = LoadImage("maps/map_02.bmp");
     gridLenght.x = mapImage.width;
     gridLenght.y = mapImage.height;
     mapImagePixels = malloc(sizeof(Color)*(gridLenght.x*gridLenght.y));
@@ -1148,7 +1170,7 @@ void UpdateParticleEmitter (ParticleEmitter *pE, int maxParticles, Vector2 posit
         for (int i=0; i<maxParticles; i++)
         {
             UpdateParticle(&pE->particles[i], pE->gravity);
-            if (pE->particles[i].isActive) printf("P: %i \n", i);
+            //if (pE->particles[i].isActive) printf("P: %i \n", i);
         }
     }
 }
@@ -1199,6 +1221,8 @@ void UpdateParticle(Particle *p, GravityForce gravity)
 void KillPlayer (Player *p)
 {
     p->isAlive = false;   
+    
+    p->onDeadScaleEasing.isFinished = false;
     p->onDeadPEmitter.isActive = true;
     
     // Init onDeadPEmitter
