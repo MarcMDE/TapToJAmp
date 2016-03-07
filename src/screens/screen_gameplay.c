@@ -40,7 +40,8 @@
 #include <time.h> // RAND_MAX
 
 #define GAME_SPEED 60
-#define PLAYER_PARTICLES 130
+#define PLAYER_PARTICLES 60
+#define PLAYER_ONDEAD_PARTICLES 50
 #define CELL_SIZE 48
 #define ASSETS_SCALE 1
 
@@ -94,18 +95,6 @@ typedef struct TriCollider
     bool isActive;
 }TriCollider;
 
-typedef struct Player
-{
-    Transform2D transform;
-    DynamicObject dynamic;
-    BoxCollider collider;
-    Easing rotationEasing;
-    bool isAlive;
-    Texture2D texture;
-    Color color;
-    ParticleEmitter pEmitter;
-}Player;
-
 typedef struct ObjectStates
 {
     bool isActive;
@@ -138,6 +127,7 @@ typedef struct Particle
 {
     Transform2D transform;
     Vector2 direction;
+    Vector2 velocity;
     Vector2 movementSpeed;
     float rotationSpeed;
     float scaleSpeed;
@@ -163,7 +153,7 @@ typedef struct ParticleEmitter
 {
     Vector2 position;
     Vector2 offset;
-    Vector2 spawnRadius;
+    float spawnRadius;
     GravityForce gravity;
     float ppf; // ParticlesPerFrame
     float frameParticles; // Total frame particles
@@ -171,8 +161,23 @@ typedef struct ParticleEmitter
     int particlesAmount; // Particles that will be spawned on the current frame
     SourceParticle source;
     Particle *particles; // Remember to freeb
+    bool isBurst;
     bool isActive;
 } ParticleEmitter;
+
+typedef struct Player
+{
+    Transform2D transform;
+    DynamicObject dynamic;
+    BoxCollider collider;
+    Easing rotationEasing;
+    bool isAlive;
+    Texture2D texture;
+    Color color;
+    ParticleEmitter pEmitter;
+    Easing onDeadScaleEasing;
+    ParticleEmitter onDeadPEmitter;
+}Player;
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -248,9 +253,10 @@ void UpdateCustomAASATTriPosition (SATTri *tri, Vector2 position);
 void UpdateCustomAASATBoxPosition (SATBox *box, Vector2 position);
 float GetRandomFloat(float min, float max);
 Vector2 GetRandomVector2(Vector2 v1, Vector2 v2);
-void UpdateParticleEmitter (ParticleEmitter *pE, int maxParticles);
+void UpdateParticleEmitter (ParticleEmitter *pE, int maxParticles, Vector2 position);
 void InitParticle (Particle *p, SourceParticle s, float spawnRadius, Vector2 pEPosition);
 void UpdateParticle(Particle *p, GravityForce gravity);
+void KillPlayer (Player *p);
 //----------------------------------------------------------------------------------
 
 // Gameplay Screen Initialization logic
@@ -281,7 +287,7 @@ void InitGameplayScreen(void)
     
     mainCamera.position = Vector2Zero();
     mainCamera.direction = Vector2Up();
-    mainCamera.speed = (Vector2){0, 1};
+    mainCamera.speed = (Vector2){0, 4.5f};
     mainCamera.isMoving = false;
     
     onCameraAuxPosition = Vector2Zero();
@@ -290,7 +296,7 @@ void InitGameplayScreen(void)
     
     // Counter on player dead (before level reset)
     deadCounter = 0;
-    deadSpan = 0.5f * GAME_SPEED;
+    deadSpan = 0.75f * GAME_SPEED;
     deadFadeAlpha = 0;
     deadFadeIn = true;
     isDeadFadeFinished = true;
@@ -339,24 +345,25 @@ void UpdateGameplayScreen(void)
                     // Update camera
                     gameElementsCamera.position = Vector2Add(gameElementsCamera.position, Vector2Product(gameElementsCamera.direction, gameElementsCamera.speed));
                     
-                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.5f)
+                    
+                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.2f)
                     {
-                        mainCamera.speed.y = 2;
-  
-                        if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.75f) mainCamera.position.y = FloatLerp(mainCamera.position.y, player.transform.position.y - (float)GetScreenHeight()/1.75f, mainCamera.speed.y);
-
+                        mainCamera.speed.y = 4.5f;
+                        if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.4f && !player.dynamic.isJumping) 
+                        {
+                            mainCamera.position.y = FloatLerp(mainCamera.position.y, player.transform.position.y - (float)GetScreenHeight()/1.4f, mainCamera.speed.y);
+                        }
                     }
                     else if (mainCamera.position.y < 0)
                     {
-                        if (!player.dynamic.isJumping) mainCamera.speed.y += 1;
+                        mainCamera.speed.y += 0.25f;
                         mainCamera.position.y = FloatLerp(mainCamera.position.y, 0, mainCamera.speed.y);
                     }
                     else if (mainCamera.position.y > 0) 
                     {
                         mainCamera.position.y = 0;
-                        mainCamera.speed.y = 2;
+                        //mainCamera.speed.y = 4.5f;
                     }
-                        
 
                     // Update game objects position before checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
                     UpdateTris(tris, trisSourcePosition, player.transform.position, gameElementsCamera);
@@ -392,6 +399,7 @@ void UpdateGameplayScreen(void)
                     {
                         deadCounter++;
                         // TODO: Add dead explosion effects (anim + sound)
+                        UpdateParticleEmitter(&player.onDeadPEmitter, PLAYER_ONDEAD_PARTICLES, player.transform.position);
                     }
                 }
             }
@@ -485,11 +493,14 @@ void UnloadGameplayScreen(void)
     free(platfs);
     free(trisSourcePosition);
     free(platfsSourcePosition);
-    free(player.pEmitter.particles)
+    free(player.pEmitter.particles);
+    free(player.onDeadPEmitter.particles);
     
     UnloadTexture(player.texture);
     UnloadTexture(trisTexture);
     UnloadTexture(platfsTexture);
+    UnloadTexture(player.pEmitter.source.texture);
+    UnloadTexture(player.onDeadPEmitter.source.texture);
 }
 
 // Gameplay Screen should finish?
@@ -552,32 +563,81 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->rotationEasing.isFinished = true;
     
     // Init particles emitter
-    p->pEmitter.offset = (Vector2){-CELL_SIZE/2 + 10, CELL_SIZE/2-10};
+    p->pEmitter.offset = (Vector2){-CELL_SIZE/2 + 5, CELL_SIZE/2-3};
     p->pEmitter.position = Vector2Add(p->transform.position, p->pEmitter.offset);
     p->pEmitter.spawnRadius = 0;
-    p->pEmitter.gravity.direction = (Vector2){1, 1};
-    p->pEmitter.gravity.value = (Vector2){0.5f, 0.75f};
-    p->pEmitter.gravity.force = Vector2Product(p->pEmitter.gravity.direction,  p->pEmitter.gravity.value);
-    p->pEmitter.pps = 70;
-    p->pEmitter.framesCounter = 0;
-    p->pEmitter.particlesCounter = 0;
-    p->pEmitter.source.texture = LoadTexture("assets/gameplay/particle_main.png")
+    p->pEmitter.gravity.direction = (Vector2){0.65f, 1};
+    p->pEmitter.gravity.value = 0.03f;
+    p->pEmitter.gravity.force = Vector2FloatProduct(p->pEmitter.gravity.direction,  p->pEmitter.gravity.value);
+    p->pEmitter.ppf = 0.7f;
+    p->pEmitter.frameParticles = 0;
+    p->pEmitter.particlesAmount = 0;
+    p->pEmitter.remainingParticles = 0;
+    p->pEmitter.isBurst = false;
+    
+    p->onDeadPEmitter.offset = Vector2Zero();
+    p->onDeadPEmitter.position = p->transform.position;
+    p->onDeadPEmitter.spawnRadius = 0;
+    p->onDeadPEmitter.gravity.direction = Vector2Zero();
+    p->onDeadPEmitter.gravity.value = 0;
+    p->onDeadPEmitter.gravity.force = Vector2FloatProduct(p->onDeadPEmitter.gravity.direction,  p->onDeadPEmitter.gravity.value);
+    p->onDeadPEmitter.ppf = PLAYER_ONDEAD_PARTICLES;
+    p->onDeadPEmitter.frameParticles = 0;
+    p->onDeadPEmitter.particlesAmount = 0;
+    p->onDeadPEmitter.remainingParticles = 0;
+    p->onDeadPEmitter.isBurst = true;
+    
     
     // particle emitter source particle
-    p->pEmitter.source.direction[0] = (Vector2){-1, 0};
-    p->pEmitter.source.direction[1] = (Vector2){-1, -0.2f};
-    p->pEmitter.source.movementSpeed[0] = (Vector2){2, 0};
-    p->pEmitter.source.movementSpeed[1] = (Vector2){2, 2};
-    p->pEmitter.source.rotationSpeed[0] = 0.5f;
-    p->pEmitter.source.rotationSpeed[1] = 2;
-    p->pEmitter.source.lifeTime[0] = 1.2f;
-    p->pEmitter.source.lifeTime[1] = 0.7f;
-    p->pEmitter.source.color = GREEN;
+    p->pEmitter.source.direction[0] = (Vector2){-1, -1};
+    p->pEmitter.source.direction[1] = (Vector2){-1, -1};
+    p->pEmitter.source.rotation[0] = 0;
+    p->pEmitter.source.rotation[1] = 360;
+    p->pEmitter.source.scale[0] = 2.5f;
+    p->pEmitter.source.scale[1] = 3.75f;
+    p->pEmitter.source.movementSpeed[0] = (Vector2){2.5f, 0.6f};
+    p->pEmitter.source.movementSpeed[1] = (Vector2){4, 0.7f};
+    p->pEmitter.source.rotationSpeed[0] = 0.25f;
+    p->pEmitter.source.rotationSpeed[1] = 1;
+    p->pEmitter.source.scaleSpeed[0] = -0.0085f;
+    p->pEmitter.source.scaleSpeed[1] = -0.012f;
+    p->pEmitter.source.lifeTime[0] = 0.6f * GAME_SPEED;
+    p->pEmitter.source.lifeTime[1] = 0.85f * GAME_SPEED;
+    p->pEmitter.source.color = (Color){0, 255, 50, 175};
+    p->pEmitter.source.texture = LoadTexture("assets/gameplay/particle_main.png");
+    
     p->pEmitter.particles = malloc(sizeof(Particle)*PLAYER_PARTICLES); // Remember to free
+    p->pEmitter.isActive = true;
     
     for (int i=0; i<PLAYER_PARTICLES; i++)
     {
         p->pEmitter.particles[i].isActive = false;
+    }
+    
+    
+    p->onDeadPEmitter.source.direction[0] = (Vector2){-1, -1};
+    p->onDeadPEmitter.source.direction[1] = (Vector2){1, 1};
+    p->onDeadPEmitter.source.rotation[0] = 0;
+    p->onDeadPEmitter.source.rotation[1] = 360;
+    p->onDeadPEmitter.source.scale[0] = 0.5f;
+    p->onDeadPEmitter.source.scale[1] = 1;
+    p->onDeadPEmitter.source.movementSpeed[0] = (Vector2){5.5f, 5.5f};
+    p->onDeadPEmitter.source.movementSpeed[1] = (Vector2){6.5, 6.5};
+    p->onDeadPEmitter.source.rotationSpeed[0] = 3.5f;
+    p->onDeadPEmitter.source.rotationSpeed[1] = 6;
+    p->onDeadPEmitter.source.scaleSpeed[0] = 0.05f;
+    p->onDeadPEmitter.source.scaleSpeed[1] = 0.1f;
+    p->onDeadPEmitter.source.lifeTime[0] = 0.7f * GAME_SPEED;
+    p->onDeadPEmitter.source.lifeTime[1] = 0.75f * GAME_SPEED;
+    p->onDeadPEmitter.source.color = (Color){0, 255, 50, 255};
+    p->onDeadPEmitter.source.texture = LoadTexture("assets/gameplay/particle_dead.png");
+    
+    p->onDeadPEmitter.particles = malloc(sizeof(Particle)*PLAYER_ONDEAD_PARTICLES); // Remember to free
+    p->onDeadPEmitter.isActive = false;
+    
+    for (int i=0; i<PLAYER_ONDEAD_PARTICLES; i++)
+    {
+        p->onDeadPEmitter.particles[i].isActive = false;
     }
     
     p->isAlive = true;
@@ -641,7 +701,7 @@ void UpdatePlayer(Player *p)
     // Set player isGrounded to false since it has to be checked every frame
     p->dynamic.isGrounded = false; 
     
-    UpdateParticleEmitter()
+    UpdateParticleEmitter(&p->pEmitter, PLAYER_PARTICLES, p->transform.position);
 }
 
 void SetPlayerAsGrounded(Player *p, int landPositionY)
@@ -667,21 +727,43 @@ void SetPlayerAsGrounded(Player *p, int landPositionY)
 
 void DrawPlayer (Player p)
 {
-    for (int i=0; i<PLAYER_PARTICLES; i++)
+    if (p.isAlive)
     {
-        if (pE.particles[i].isActive)
+        for (int i=0; i<PLAYER_PARTICLES; i++)
         {
-            DrawTexturePro(pE.source.texture, (Rectangle){0, 0, pE.source.texture.width, pE.source.height}, (Rectangle){onCameraAuxPosition.x, 
-            onCameraAuxPosition.y, pE.source.texture.width, pE.source.texture.height}, (Vector2){pE.source.texture.width/2, pE.source.texture.height/2}, 
-            -pE.particles[i].transform.rotation, pE.particles[i].color);
+            if (p.pEmitter.particles[i].isActive)
+            {
+                onCameraAuxPosition = GetOnCameraPosition(p.pEmitter.particles[i].transform.position, mainCamera);
+                
+                DrawTexturePro(p.pEmitter.source.texture, (Rectangle){0, 0, p.pEmitter.source.texture.width, p.pEmitter.source.texture.height}, 
+                (Rectangle){onCameraAuxPosition.x, onCameraAuxPosition.y, p.pEmitter.source.texture.width * p.pEmitter.particles[i].transform.scale, 
+                p.pEmitter.source.texture.height * p.pEmitter.particles[i].transform.scale}, (Vector2){p.pEmitter.source.texture.width/2, p.pEmitter.source.texture.height/2}, 
+                -p.pEmitter.particles[i].transform.rotation, p.pEmitter.particles[i].color);
+            }
+        }
+        
+        onCameraAuxPosition = GetOnCameraPosition(p.transform.position, mainCamera);
+        
+        DrawTexturePro(p.texture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
+        onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, 
+        CELL_SIZE/2}, -p.transform.rotation, p.color);
+    }
+    else
+    {
+        for (int i=0; i<PLAYER_ONDEAD_PARTICLES; i++)
+        {
+            if (p.onDeadPEmitter.particles[i].isActive)
+            {
+                onCameraAuxPosition = GetOnCameraPosition(p.onDeadPEmitter.particles[i].transform.position, mainCamera);
+                
+                DrawTexturePro(p.onDeadPEmitter.source.texture, (Rectangle){0, 0, p.onDeadPEmitter.source.texture.width, p.onDeadPEmitter.source.texture.height}, 
+                (Rectangle){onCameraAuxPosition.x, onCameraAuxPosition.y, p.onDeadPEmitter.source.texture.width * p.onDeadPEmitter.particles[i].transform.scale, 
+                p.onDeadPEmitter.source.texture.height * p.onDeadPEmitter.particles[i].transform.scale}, (Vector2){p.onDeadPEmitter.source.texture.width * p.onDeadPEmitter.particles[i].transform.scale/2, 
+                p.onDeadPEmitter.source.texture.height * p.onDeadPEmitter.particles[i].transform.scale/2}, 
+                -p.onDeadPEmitter.particles[i].transform.rotation, p.onDeadPEmitter.particles[i].color);
+            }
         }
     }
-    
-    onCameraAuxPosition = GetOnCameraPosition(p.transform.position, mainCamera);
-    
-    DrawTexturePro(p.texture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
-    onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, 
-    CELL_SIZE/2}, -p.transform.rotation, p.color);
 }
 
 void SetOnCameraPosition (Vector2 *position, Vector2 sourcePosition, Camera2D camera)
@@ -752,7 +834,7 @@ void CheckPlayerTrisCollision (Player *p, TriGameObject *tris)
             {
                 // Player collided with a triangle
                 // Set player as dead
-                p->isAlive = false;
+                KillPlayer(p);
             }
         }
     }
@@ -792,7 +874,6 @@ void CheckPlayerPlatfsCollision (Player *p, BoxGameObject *platfs)
                 
                 if (p->dynamic.prevPosition.y + CELL_SIZE/2 <= platfs[i].transform.position.y - CELL_SIZE/2)
                 {
-                     printf("landedPlatf\n");
                     // Player landed on a platform
                     SetPlayerAsGrounded(p, platfs[i].transform.position.y - CELL_SIZE/2);
                     // Set player previous position
@@ -801,7 +882,7 @@ void CheckPlayerPlatfsCollision (Player *p, BoxGameObject *platfs)
                 else
                 {
                     // Set player as dead
-                    p->isAlive = false;   
+                    KillPlayer(p);
                 }
             }
         }
@@ -818,6 +899,9 @@ void ResetGameplay ()
             
             // Reset variables 
             gameElementsCamera.position = Vector2Zero();
+            mainCamera.speed.y = 4.5f;
+            mainCamera.position = Vector2Zero();
+            
             isGameplayStopped = true;
             deadCounter = 0;
             
@@ -836,6 +920,18 @@ void ResetGameplay ()
             player.rotationEasing.t = 0;
             player.rotationEasing.b = 0;
             player.rotationEasing.isFinished = true;
+            
+            for (int i=0; i<PLAYER_PARTICLES; i++)
+            {
+                player.pEmitter.particles[i].isActive = false;
+            }
+            
+            player.onDeadPEmitter.isActive = false;
+            
+            for (int i=0; i<PLAYER_ONDEAD_PARTICLES; i++)
+            {
+                player.onDeadPEmitter.particles[i].isActive = false;
+            }
             
             isAttemptsCounterActive = true;
             attemptsCounterPosition = attemptsCounterSourcePosition;
@@ -956,8 +1052,6 @@ void LoadMap ()
         }
     }
     
-    printf("Tris: %i\n", maxTris);
-    
     free(mapImagePixels);
     UnloadImage(mapImage);
 }
@@ -1027,43 +1121,58 @@ Vector2 GetRandomVector2(Vector2 v1, Vector2 v2)
 
 void UpdateParticleEmitter (ParticleEmitter *pE, int maxParticles, Vector2 position)
 {
-    pE->position = position;
-    
-    pE->frameParticles = pE->ppf + pE->remainingParticles;
-    pE->particlesAmount = frameParticles/1;
-    pE->remainingParticles = frameParticles%1;
-    
-    for (int i=0; i<maxParticles; i++)
+    if (pE->isActive)
     {
-        if (!pE->particles[i].isActive)
+        pE->position = Vector2Add(position, pE->offset);
+        
+        if (!pE->isBurst)
         {
-            // Init particle
-            InitParticle(&pE->particles[i], pE->source, pE->spawnRadius);
+            pE->frameParticles = pE->ppf + pE->remainingParticles;
+            pE->particlesAmount = pE->frameParticles/1;
+            pE->remainingParticles = fmod(pE->frameParticles, 1);
             
-            particlesAmount--;
-            if (particlesAmount <= 0) i=maxParticles;
+            for (int i=0; i<maxParticles; i++)
+            {
+                if (!pE->particles[i].isActive)
+                {
+                    // Init particle
+                    if (pE->particlesAmount > 0)
+                    {
+                    InitParticle(&pE->particles[i], pE->source, pE->spawnRadius, pE->position);
+                    pE->particlesAmount--;
+                    }
+                    else i=maxParticles;
+                }
+            }
         }
-    }
-    
-    for (int i=0; i<maxParticles; i++)
-    {
-        UpdateParticle(pE->particles[i], pE->gravity);
+        for (int i=0; i<maxParticles; i++)
+        {
+            UpdateParticle(&pE->particles[i], pE->gravity);
+            if (pE->particles[i].isActive) printf("P: %i \n", i);
+        }
     }
 }
 
 void InitParticle (Particle *p, SourceParticle s, float spawnRadius, Vector2 pEPosition)
 {   
-    p->transform.position = Vector2Rotate((Vector2){0, GetRandomFloat(0, -spawnRadius)}, GetRandomValue(0, 360), pEPosition);
-    p->transform.rotation = GetRandomFloat(s->rotation[0], s->rotation[1]);
-    p->transform.scale = GetRandomFloat(s->scale[0], s->scale[1]);
+    if (spawnRadius!= 0)
+    {
+        p->transform.position = Vector2Add(pEPosition, (Vector2){0, GetRandomFloat(0, -spawnRadius)});
+        Vector2Rotate(&p->transform.position, pEPosition, GetRandomValue(0, 360));
+    }   
+    else p->transform.position = pEPosition;
     
-    p->direction = GetRandomVector2(s->direction[0], s->direction[1]);
-    p->movementSpeed = GetRandomVector2(s->movementSpeed[0], s->movementSpeed[1]);
-    p->rotationSpeed = GetRandomVector2(s->rotationSpeed[0], s->rotationSpeed[1]);
-    p->scaleSpeed = GetRandomVector2(s->scaleSpeed[0], s->scaleSpeed[1]);
-    p->lifeTime = GetRandomValue(s->lifeTime[0], s->lifeTime[1]);
+    p->transform.rotation = GetRandomFloat(s.rotation[0], s.rotation[1]);
+    p->transform.scale = GetRandomFloat(s.scale[0], s.scale[1]);
     
-    p->color = s->color;
+    p->direction = GetRandomVector2(s.direction[0], s.direction[1]);
+    p->movementSpeed = GetRandomVector2(s.movementSpeed[0], s.movementSpeed[1]);
+    p->velocity = Vector2Product(p->movementSpeed, p->direction);
+    p->rotationSpeed = GetRandomFloat(s.rotationSpeed[0], s.rotationSpeed[1]);
+    p->scaleSpeed = GetRandomFloat(s.scaleSpeed[0], s.scaleSpeed[1]);
+    p->lifeTime = GetRandomValue(s.lifeTime[0], s.lifeTime[1]);
+    
+    p->color = s.color;
     
     p->isActive = true;
 }
@@ -1074,12 +1183,31 @@ void UpdateParticle(Particle *p, GravityForce gravity)
     {
         if (p->lifeTime > 0)
         {
-            p->transform.position = Vector2Add(Vector2Add(p->transform.position, Vector2Product(p->direction, p->movementSpeed)), gravity.force);
+            p->velocity = Vector2Add(p->velocity, gravity.force);
+            p->transform.position = Vector2Add(p->transform.position, p->velocity);
             p->transform.rotation += p->rotationSpeed;
-            p->transform.scale += p->rotationSeed;
+            p->transform.scale += p->scaleSpeed;
             
             p->lifeTime--;
+            
+            if (p->lifeTime <= 0) p->isActive = false;
         }
         else p->isActive = false;
     }
+}
+
+void KillPlayer (Player *p)
+{
+    p->isAlive = false;   
+    p->onDeadPEmitter.isActive = true;
+    
+    // Init onDeadPEmitter
+    p->onDeadPEmitter.position = p->transform.position;
+    
+    for (int i=0; i<PLAYER_ONDEAD_PARTICLES; i++)
+    {
+        // Init particle
+        InitParticle(&p->onDeadPEmitter.particles[i], p->onDeadPEmitter.source, p->onDeadPEmitter.spawnRadius, p->onDeadPEmitter.position);
+    }
+    
 }
