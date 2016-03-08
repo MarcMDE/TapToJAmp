@@ -456,6 +456,13 @@ void DrawGameplayScreen(void)
             DrawTexturePro(trisTexture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
             onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
             tris[i].transform.rotation, WHITE);
+            
+            // Debug collision points
+            for (int j=0; j<3; j++)
+            {
+                onCameraAuxPosition = GetOnCameraPosition(tris[i].collider.tri.points[j], mainCamera);
+                if (tris[i].collider.isActive) DrawCircleV(onCameraAuxPosition, 5, GREEN);
+            }
         }
     }
     
@@ -468,15 +475,14 @@ void DrawGameplayScreen(void)
             DrawTexturePro(platfsTexture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
             onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
             platfs[i].transform.rotation, WHITE);
+            
+            // Debug collision points
+            for (int j=0; j<4; j++)
+            {
+                onCameraAuxPosition = GetOnCameraPosition(platfs[i].collider.box.points[j], mainCamera);
+                if (platfs[i].collider.isActive) DrawCircleV(onCameraAuxPosition, 5, GREEN);
+            }
         }
-        
-        /*
-        for (int j=0; j<4; j++)
-        {
-            onCameraAuxPosition = GetOnCameraPosition(platfs[i].collider.box.points[j], mainCamera);
-            if (platfs[i].collider.isActive) DrawCircleV(onCameraAuxPosition, 5, GREEN);
-        }
-        */
     }
     
     if (isAttemptsCounterActive) DrawText(FormatText("%i", attemptsCounter), attemptsCounterPosition.x, attemptsCounterPosition.y, 150, DARKGRAY);
@@ -798,24 +804,21 @@ Vector2 GetOnCameraPosition (Vector2 position, Camera2D camera)
 void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D camera)
 {
     SetOnCameraPosition(position, sourcePosition, camera);
-    
-    if (state->isInScreen)
+
+    // Set object un-active if leaves the screen (from left)
+    if (position->x + CELL_SIZE/2 < 0) 
     {
-        // Set object un-active if leaves the screen (from left)
-        if (position->x + CELL_SIZE/2 < 0) 
-        {
-            state->isInScreen = false;
-            state->isActive = false;
-        }
+        state->isInScreen = false;
+        state->isActive = false;
     }
-    else
+
+    // Set object "drawable" if enters the screen (from right)
+    if (position->x - CELL_SIZE/2 < GetScreenWidth() && position->y + CELL_SIZE/2 > 0 && position->y - CELL_SIZE/2 < GetScreenHeight())
     {
-        // Set object "drawable" if enters the screen (from right)
-        if (position->x - CELL_SIZE/2 < GetScreenWidth())
-        {
-            state->isInScreen = true;
-        }
+        state->isInScreen = true;
     }
+    else state->isInScreen = false;
+
 }
 
 void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera)
@@ -826,7 +829,8 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
         {
             UpdateOnCameraGameObject(&tris[i].transform.position, &tris[i].state, sourcePosition[i], camera);
             
-            if (tris[i].state.isInScreen && tris[i].transform.position.x-CELL_SIZE*1.5f < playerPosition.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
+            if (tris[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 20), playerPosition.y - (CELL_SIZE/2 + 20), CELL_SIZE + 40, CELL_SIZE + 40}, 
+            (Rectangle){tris[i].transform.position.x - CELL_SIZE/2, tris[i].transform.position.y - CELL_SIZE/2, CELL_SIZE, CELL_SIZE}))
             {
                 // Tri is on the player "colision zone"
                 tris[i].collider.isActive = true;
@@ -834,7 +838,7 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
                 // Update collider position
                 UpdateCustomAASATTriPosition(&tris[i].collider.tri, tris[i].transform.position);
             }
-            else if (tris[i].state.isInScreen && tris[i].transform.position.x + CELL_SIZE*1.5f < player.transform.position.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
+            else
             {
                 // Tri is out the player "colision zone"
                 tris[i].collider.isActive = false;
@@ -867,8 +871,8 @@ void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playe
         {
             UpdateOnCameraGameObject(&platfs[i].transform.position, &platfs[i].state, sourcePosition[i], camera);
             
-            if (platfs[i].state.isInScreen && platfs[i].transform.position.x - CELL_SIZE * 1.5f < playerPosition.x && 
-            platfs[i].transform.position.x + CELL_SIZE * 1.5f > player.transform.position.x) // CELL_SIZE*1.5 is a safe value for the player-collider distance checking
+            if (platfs[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 20), playerPosition.y - (CELL_SIZE/2 + 20), CELL_SIZE + 40, CELL_SIZE + 40}, 
+            (Rectangle){platfs[i].transform.position.x - CELL_SIZE/2, platfs[i].transform.position.y - CELL_SIZE/2, CELL_SIZE, CELL_SIZE}))
             {
                 // Platf is on the player "colision zone"
                 platfs[i].collider.isActive = true;
@@ -966,6 +970,7 @@ void ResetGameplay ()
             for (int i=0; i<maxTris; i++)
             {
                 tris[i].state.isActive = true;
+                tris[i].state.isInScreen = false;
                 tris[i].collider.isActive = false;
             }
             UpdateTris(tris, trisSourcePosition, player.transform.position, gameElementsCamera);
@@ -973,6 +978,7 @@ void ResetGameplay ()
             for (int i=0; i<maxPlatfs; i++)
             {
                 platfs[i].state.isActive = true;
+                platfs[i].state.isInScreen = false;
                 platfs[i].collider.isActive = false;
             }
             UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, gameElementsCamera); 
