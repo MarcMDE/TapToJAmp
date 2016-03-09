@@ -185,6 +185,13 @@ typedef struct Player
     int onDeadCircleSize;
     ParticleEmitter onDeadPEmitter;
 }Player;
+
+typedef struct Bar
+{
+    Rectangle back;
+    Rectangle front;
+    bool isActive;
+}Bar;
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -232,6 +239,8 @@ static float deadFadeAlpha;
 static bool deadFadeIn;
 static bool isDeadFadeFinished;
 
+static Bar progressBar;
+
 static bool isGamePaused;
 //----------------------------------------------------------------------------------
 
@@ -246,7 +255,7 @@ void SetPlayerAsGrounded(Player *p, int landPositionY);
 void DrawPlayer (Player p);
 void SetOnCameraPosition (Vector2 *position, Vector2 sourcePosition, Camera2D camera);
 Vector2 GetOnCameraPosition (Vector2 position, Camera2D camera);
-void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D camera);
+void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D elementsCamera, Camera2D camera);
 void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera);
 void CheckPlayerTrisCollision (Player *p, TriGameObject *tris);
 void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playerPosition, Camera2D camera);
@@ -332,6 +341,10 @@ void InitGameplayScreen(void)
     platfNormals[0] = Vector2Up();
     platfNormals[1] = Vector2Right();
     
+    progressBar.back = (Rectangle){200, 10, GetScreenWidth() - 400, 12};
+    progressBar.front = (Rectangle){200, 10, 0, 12};
+    progressBar.isActive = true;
+    
     srand(time(NULL)); 
 }
 
@@ -370,6 +383,16 @@ void UpdateGameplayScreen(void)
                     {
                         mainCamera.position.y = 0;
                         //mainCamera.speed.y = 4.5f;
+                    }
+                    
+                    if (progressBar.front.width < progressBar.back.width && progressBar.isActive) 
+                    {
+                        progressBar.front.width = progressBar.back.width *  (gameElementsCamera.position.x / (gridLenght.x * CELL_SIZE));
+                    }
+                    else if (!progressBar.isActive)
+                    {
+                        progressBar.front.width = progressBar.back.width;
+                        progressBar.isActive = false;
                     }
 
                     // Update game objects position before checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
@@ -488,6 +511,9 @@ void DrawGameplayScreen(void)
     if (isAttemptsCounterActive) DrawText(FormatText("%i", attemptsCounter), attemptsCounterPosition.x, attemptsCounterPosition.y, 150, DARKGRAY);
     
     DrawPlayer(player);
+    
+    DrawRectangleRec(progressBar.back, LIGHTGRAY);
+    DrawRectangleRec(progressBar.front, RED);
     
     if (isGamePaused)
     {
@@ -801,9 +827,10 @@ Vector2 GetOnCameraPosition (Vector2 position, Camera2D camera)
     return Vector2Sub(position, camera.position);
 }
 
-void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D camera)
+void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 sourcePosition, Camera2D elementsCamera, Camera2D camera)
 {
-    SetOnCameraPosition(position, sourcePosition, camera);
+    SetOnCameraPosition(position, sourcePosition, elementsCamera);
+    onCameraAuxPosition = GetOnCameraPosition(*position, camera);
 
     // Set object un-active if leaves the screen (from left)
     if (position->x + CELL_SIZE/2 < 0) 
@@ -811,9 +838,7 @@ void UpdateOnCameraGameObject (Vector2 *position, ObjectStates *state, Vector2 s
         state->isInScreen = false;
         state->isActive = false;
     }
-
-    // Set object "drawable" if enters the screen (from right)
-    if (position->x - CELL_SIZE/2 < GetScreenWidth() && position->y + CELL_SIZE/2 > 0 && position->y - CELL_SIZE/2 < GetScreenHeight())
+    else if (position->x - CELL_SIZE/2 < GetScreenWidth() && onCameraAuxPosition.y + CELL_SIZE/2 > 0 && onCameraAuxPosition.y - CELL_SIZE/2 < GetScreenHeight())
     {
         state->isInScreen = true;
     }
@@ -827,7 +852,7 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
     {
         if (tris[i].state.isActive)
         {
-            UpdateOnCameraGameObject(&tris[i].transform.position, &tris[i].state, sourcePosition[i], camera);
+            UpdateOnCameraGameObject(&tris[i].transform.position, &tris[i].state, sourcePosition[i], camera, mainCamera);
             
             if (tris[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 20), playerPosition.y - (CELL_SIZE/2 + 20), CELL_SIZE + 40, CELL_SIZE + 40}, 
             (Rectangle){tris[i].transform.position.x - CELL_SIZE/2, tris[i].transform.position.y - CELL_SIZE/2, CELL_SIZE, CELL_SIZE}))
@@ -869,7 +894,7 @@ void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playe
     {
         if (platfs[i].state.isActive)
         {
-            UpdateOnCameraGameObject(&platfs[i].transform.position, &platfs[i].state, sourcePosition[i], camera);
+            UpdateOnCameraGameObject(&platfs[i].transform.position, &platfs[i].state, sourcePosition[i], camera, mainCamera);
             
             if (platfs[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 20), playerPosition.y - (CELL_SIZE/2 + 20), CELL_SIZE + 40, CELL_SIZE + 40}, 
             (Rectangle){platfs[i].transform.position.x - CELL_SIZE/2, platfs[i].transform.position.y - CELL_SIZE/2, CELL_SIZE, CELL_SIZE}))
@@ -982,6 +1007,9 @@ void ResetGameplay ()
                 platfs[i].collider.isActive = false;
             }
             UpdatePlatfs (platfs, platfsSourcePosition, player.transform.position, gameElementsCamera); 
+            
+            progressBar.front.width = 0;
+            progressBar.isActive = true;
         }
         else deadFadeAlpha += 0.05f;
     }
