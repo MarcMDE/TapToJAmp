@@ -42,6 +42,8 @@
 #define GAME_SPEED 60
 #define PLAYER_PARTICLES 60
 #define PLAYER_ONDEAD_PARTICLES 50
+#define FG_PARTICLES 20
+#define MAX_LOWBGS 6
 #define CELL_SIZE 48
 #define ASSETS_SCALE 1
 
@@ -242,6 +244,16 @@ static bool isDeadFadeFinished;
 static Bar progressBar;
 
 static bool isGamePaused;
+
+static float mainCameraUpPercent;
+static float mainCameraDownPercent;
+
+static Texture2D bgTexture;
+static Texture2D lowBgTexture;
+
+static Vector2 lowBgsPosition[MAX_LOWBGS];
+
+static ParticleEmitter fgPEmitter;
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -273,6 +285,7 @@ void UpdateParticleEmitter (ParticleEmitter *pE, int maxParticles, Vector2 posit
 void InitParticle (Particle *p, SourceParticle s, float spawnRadius, Vector2 pEPosition);
 void UpdateParticle(Particle *p, GravityForce gravity);
 void KillPlayer (Player *p);
+float CosInterpolation (float start, float end, float percent);
 //----------------------------------------------------------------------------------
 
 // Gameplay Screen Initialization logic
@@ -288,23 +301,26 @@ void InitGameplayScreen(void)
     
     // Set gravity
     gravity[0].direction = (Vector2){0, 1};
-    gravity[0].value = 1.15f;
+    gravity[0].value = 1.55f;
     gravity[0].force = Vector2FloatProduct(gravity[0].direction, gravity[0].value);
     
     gravity[1].direction = (Vector2){0, 1};
-    gravity[1].value = 2.5f;
+    gravity[1].value = 4.4f;
     gravity[1].force = Vector2FloatProduct(gravity[1].direction, gravity[1].value);
     
     // Set camera
     gameElementsCamera.position = Vector2Zero();
     gameElementsCamera.direction = Vector2Right();
-    gameElementsCamera.speed = (Vector2){6.65f, 0};
+    gameElementsCamera.speed = (Vector2){7.8f, 0};
     gameElementsCamera.isMoving = false;
     
     mainCamera.position = Vector2Zero();
     mainCamera.direction = Vector2Up();
-    mainCamera.speed = (Vector2){0, 5.5f};
+    mainCamera.speed = (Vector2){0, 3.2f};
     mainCamera.isMoving = false;
+    
+    mainCameraDownPercent = 0;
+    mainCameraUpPercent = 0;
     
     onCameraAuxPosition = Vector2Zero();
     
@@ -324,7 +340,7 @@ void InitGameplayScreen(void)
     
     isGamePaused = false;
     
-    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 15.75f}, 0.6f * GAME_SPEED);
+    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 17.85f}, 0.5f * GAME_SPEED);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
@@ -341,9 +357,57 @@ void InitGameplayScreen(void)
     platfNormals[0] = Vector2Up();
     platfNormals[1] = Vector2Right();
     
-    progressBar.back = (Rectangle){200, 10, GetScreenWidth() - 400, 12};
-    progressBar.front = (Rectangle){200, 10, 0, 12};
+    progressBar.back = (Rectangle){200, 5, GetScreenWidth() - 400, 8};
+    progressBar.front = (Rectangle){200, 5, 0, 8};
     progressBar.isActive = true;
+    
+    bgTexture = LoadTexture("assets/gameplay/bg_main.png");
+    lowBgTexture = LoadTexture("assets/gameplay/bg3_main.png");
+    
+    // Init Low Bgs Position
+    for (int i=0; i<MAX_LOWBGS; i++)
+    {
+        lowBgsPosition[i].y = GetScreenHeight() - lowBgTexture.height;
+        lowBgsPosition[i].x = lowBgTexture.width * i;
+    }
+    
+    // Init fgPEmitter
+    fgPEmitter.offset = Vector2Zero();
+    fgPEmitter.position = (Vector2){GetScreenWidth(), 0};
+    fgPEmitter.spawnRadius = 50;
+    fgPEmitter.gravity.direction = Vector2One();
+    fgPEmitter.gravity.value = 0.002;
+    fgPEmitter.gravity.force = Vector2FloatProduct(fgPEmitter.gravity.direction,  fgPEmitter.gravity.value);
+    fgPEmitter.ppf = 3.5f/60.0f;
+    fgPEmitter.frameParticles = 0;
+    fgPEmitter.particlesAmount = 0;
+    fgPEmitter.remainingParticles = 0;
+    fgPEmitter.isBurst = false;
+    
+    fgPEmitter.source.direction[0] = (Vector2){-1, 0.2f};
+    fgPEmitter.source.direction[1] = (Vector2){-1, 0.5f};
+    fgPEmitter.source.rotation[0] = 0;
+    fgPEmitter.source.rotation[1] = 360;
+    fgPEmitter.source.scale[0] = 2;
+    fgPEmitter.source.scale[1] = 5;
+    fgPEmitter.source.movementSpeed[0] = (Vector2){6, 2};
+    fgPEmitter.source.movementSpeed[1] = (Vector2){8, 4};
+    fgPEmitter.source.rotationSpeed[0] = 1;
+    fgPEmitter.source.rotationSpeed[1] = 2;
+    fgPEmitter.source.scaleSpeed[0] = -0.003f;
+    fgPEmitter.source.scaleSpeed[1] = -0.005f;
+    fgPEmitter.source.lifeTime[0] = 3.5f * GAME_SPEED;
+    fgPEmitter.source.lifeTime[1] = 4.5f * GAME_SPEED;
+    fgPEmitter.source.color = WHITE;
+    fgPEmitter.source.texture = LoadTexture("assets/gameplay/glow16.png");
+    
+    fgPEmitter.particles = malloc(sizeof(Particle)*FG_PARTICLES); // Remember to free
+    fgPEmitter.isActive = true;
+    
+    for (int i=0; i<FG_PARTICLES; i++)
+    {
+        fgPEmitter.particles[i].isActive = false;
+    }
     
     srand(time(NULL)); 
 }
@@ -365,19 +429,17 @@ void UpdateGameplayScreen(void)
                     // Update camera
                     gameElementsCamera.position = Vector2Add(gameElementsCamera.position, Vector2Product(gameElementsCamera.direction, gameElementsCamera.speed));
                     
-                    
-                    if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.4f)
+                    // TODO: Camera upadtes with the player max position on jump (not using the current)
+                    if (player.transform.position.y - mainCamera.position.y < CELL_SIZE * 8)
                     {
-                        mainCamera.speed.y = 4.5f;
-                        if (player.transform.position.y - mainCamera.position.y < (float)GetScreenHeight()/1.6f && !player.dynamic.isJumping) 
+                        if (player.transform.position.y - mainCamera.position.y < CELL_SIZE * 4) 
                         {
-                            mainCamera.position.y = FloatLerp(mainCamera.position.y, player.transform.position.y - (float)GetScreenHeight()/1.6f, mainCamera.speed.y);
+                            mainCamera.position.y = FloatLerp(mainCamera.position.y, player.transform.position.y - CELL_SIZE * 5.2f, mainCamera.speed.y);
                         }
                     }
                     else if (mainCamera.position.y < 0)
                     {
-                        mainCamera.speed.y += 0.5f;
-                        mainCamera.position.y = FloatLerp(mainCamera.position.y, 0, mainCamera.speed.y);
+                        mainCamera.position.y = FloatLerp(mainCamera.position.y, 0, mainCamera.speed.y*2.5f);
                     }
                     else if (mainCamera.position.y > 0) 
                     {
@@ -394,6 +456,26 @@ void UpdateGameplayScreen(void)
                         progressBar.front.width = progressBar.back.width;
                         progressBar.isActive = false;
                     }
+                    
+                    for (int i=0; i<MAX_LOWBGS; i++)
+                    {
+                        lowBgsPosition[i].x -= 3;
+                    }
+                    for (int i=0; i<MAX_LOWBGS; i++)
+                    {
+                        if (lowBgsPosition[i].x + lowBgTexture.width <= 0)
+                        {
+                            float aux = 0;
+                            for (int j=0; j<MAX_LOWBGS; j++)
+                            {
+                                if (lowBgsPosition[j].x > aux) aux = lowBgsPosition[j].x;
+                            }
+                            lowBgsPosition[i].x = aux + lowBgTexture.width;
+                            i=MAX_LOWBGS;
+                        }
+                    }
+                    
+                    UpdateParticleEmitter(&fgPEmitter, FG_PARTICLES, fgPEmitter.position);
 
                     // Update game objects position before checking the collisions, so the player will see the collision drawed (otherwise it could be skiped)
                     UpdateTris(tris, trisSourcePosition, player.transform.position, gameElementsCamera);
@@ -411,7 +493,7 @@ void UpdateGameplayScreen(void)
                     
                     if (isAttemptsCounterActive)
                     {
-                        attemptsCounterPosition = Vector2Sub (attemptsCounterSourcePosition, gameElementsCamera.position);
+                        attemptsCounterPosition.x -= 5;
                         if (attemptsCounterPosition.x < -500)
                         {
                             attemptsCounterPosition = attemptsCounterSourcePosition;
@@ -462,12 +544,21 @@ void UpdateGameplayScreen(void)
 // Gameplay Screen Draw logic
 void DrawGameplayScreen(void)
 {
+    // Draw BG
+    DrawTextureEx(bgTexture, (Vector2){0, 0}, 0, 2, WHITE);
+    
+    for (int i=0; i<MAX_LOWBGS; i++)
+    {
+        onCameraAuxPosition = GetOnCameraPosition(lowBgsPosition[i], mainCamera);
+        DrawTextureV(lowBgTexture, onCameraAuxPosition, DARKBLUE);
+    }
+    
     // Draw Ground
-    DrawRectangle(0, GetOnCameraPosition((Vector2){0, groundY}, mainCamera).y, GetScreenWidth(), 2, BLACK);
+    //DrawRectangle(0, GetOnCameraPosition((Vector2){0, groundY}, mainCamera).y, GetScreenWidth(), 2, BLACK);
     
     // Draw Game Grid
-    for (int i=0; i<gridLenght.x+1; i++) DrawRectangle(i*CELL_SIZE, 0, 1, GetScreenHeight(), LIGHTGRAY); // Columns
-    for (int i=0; i<gridLenght.y; i++) DrawRectangle(0, i*CELL_SIZE, GetScreenWidth(), 1, LIGHTGRAY); // Rows
+    //for (int i=0; i<gridLenght.x+1; i++) DrawRectangle(i*CELL_SIZE, 0, 1, GetScreenHeight(), LIGHTGRAY); // Columns
+    //for (int i=0; i<gridLenght.y; i++) DrawRectangle(0, i*CELL_SIZE, GetScreenWidth(), 1, LIGHTGRAY); // Rows
     
     // Draw Tris
     for (int i=0; i<maxTris; i++)
@@ -480,12 +571,14 @@ void DrawGameplayScreen(void)
             onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
             tris[i].transform.rotation, WHITE);
             
+            /*
             // Debug collision points
             for (int j=0; j<3; j++)
             {
                 onCameraAuxPosition = GetOnCameraPosition(tris[i].collider.tri.points[j], mainCamera);
                 if (tris[i].collider.isActive) DrawCircleV(onCameraAuxPosition, 5, GREEN);
             }
+            */
         }
     }
     
@@ -499,18 +592,37 @@ void DrawGameplayScreen(void)
             onCameraAuxPosition.y, CELL_SIZE, CELL_SIZE}, (Vector2){CELL_SIZE/2, CELL_SIZE/2}, 
             platfs[i].transform.rotation, WHITE);
             
+            /*
             // Debug collision points
             for (int j=0; j<4; j++)
             {
                 onCameraAuxPosition = GetOnCameraPosition(platfs[i].collider.box.points[j], mainCamera);
                 if (platfs[i].collider.isActive) DrawCircleV(onCameraAuxPosition, 5, GREEN);
             }
+            */
         }
     }
     
-    if (isAttemptsCounterActive) DrawText(FormatText("%i", attemptsCounter), attemptsCounterPosition.x, attemptsCounterPosition.y, 150, DARKGRAY);
+    if (isAttemptsCounterActive) DrawText(FormatText("%i", attemptsCounter), attemptsCounterPosition.x, attemptsCounterPosition.y, 200, WHITE);
     
     DrawPlayer(player);
+    
+    int part = 0;
+    for (int i=0; i<FG_PARTICLES; i++)
+    {
+        if (fgPEmitter.particles[i].isActive)
+        {
+            onCameraAuxPosition = GetOnCameraPosition(fgPEmitter.particles[i].transform.position, mainCamera);
+            
+            DrawTexturePro(fgPEmitter.source.texture, (Rectangle){0, 0, fgPEmitter.source.texture.width, fgPEmitter.source.texture.height}, 
+            (Rectangle){onCameraAuxPosition.x, onCameraAuxPosition.y, fgPEmitter.source.texture.width * fgPEmitter.particles[i].transform.scale, 
+            fgPEmitter.source.texture.height * fgPEmitter.particles[i].transform.scale}, (Vector2){fgPEmitter.source.texture.width/2, fgPEmitter.source.texture.height/2}, 
+            -fgPEmitter.particles[i].transform.rotation, fgPEmitter.particles[i].color);
+            part++;
+        }
+    }
+    
+    printf("Part: %i \n", part);
     
     DrawRectangleRec(progressBar.back, LIGHTGRAY);
     DrawRectangleRec(progressBar.front, RED);
@@ -518,10 +630,10 @@ void DrawGameplayScreen(void)
     if (isGamePaused)
     {
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(LIGHTGRAY, 0.45f));
-        DrawText("PAUSE", GetScreenWidth()/2 - 100, GetScreenHeight()/2-20, 40, DARKGRAY);
-        DrawText("<P>", GetScreenWidth()/2 - 45, GetScreenHeight()/2 + 30, 24, DARKGRAY); 
+        DrawText("PAUSE", GetScreenWidth()/2 - 100, GetScreenHeight()/2-20, 40, WHITE);
+        DrawText("<P>", GetScreenWidth()/2 - 45, GetScreenHeight()/2 + 30, 24, WHITE); 
     }
-    
+
     if (!isDeadFadeFinished)
     {
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, deadFadeAlpha));
@@ -854,7 +966,7 @@ void UpdateTris (TriGameObject *tris, Vector2 *sourcePosition, Vector2 playerPos
         {
             UpdateOnCameraGameObject(&tris[i].transform.position, &tris[i].state, sourcePosition[i], camera, mainCamera);
             
-            if (tris[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 20), playerPosition.y - (CELL_SIZE/2 + 20), CELL_SIZE + 40, CELL_SIZE + 40}, 
+            if (tris[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 30), playerPosition.y - (CELL_SIZE/2 + 30), CELL_SIZE + 60, CELL_SIZE + 60}, 
             (Rectangle){tris[i].transform.position.x - CELL_SIZE/2, tris[i].transform.position.y - CELL_SIZE/2, CELL_SIZE, CELL_SIZE}))
             {
                 // Tri is on the player "colision zone"
@@ -896,7 +1008,7 @@ void UpdatePlatfs (BoxGameObject *platfs, Vector2 *sourcePosition, Vector2 playe
         {
             UpdateOnCameraGameObject(&platfs[i].transform.position, &platfs[i].state, sourcePosition[i], camera, mainCamera);
             
-            if (platfs[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 20), playerPosition.y - (CELL_SIZE/2 + 20), CELL_SIZE + 40, CELL_SIZE + 40}, 
+            if (platfs[i].state.isInScreen && CheckCollisionRecs((Rectangle){playerPosition.x - (CELL_SIZE/2 + 30), playerPosition.y - (CELL_SIZE/2 + 30), CELL_SIZE + 60, CELL_SIZE + 60}, 
             (Rectangle){platfs[i].transform.position.x - CELL_SIZE/2, platfs[i].transform.position.y - CELL_SIZE/2, CELL_SIZE, CELL_SIZE}))
             {
                 // Platf is on the player "colision zone"
@@ -947,8 +1059,6 @@ void ResetGameplay ()
             
             // Reset variables 
             gameElementsCamera.position = Vector2Zero();
-            mainCamera.speed.y = 4.5f;
-            mainCamera.position = Vector2Zero();
             
             isGameplayStopped = true;
             deadCounter = 0;
@@ -979,6 +1089,11 @@ void ResetGameplay ()
             for (int i=0; i<PLAYER_ONDEAD_PARTICLES; i++)
             {
                 player.onDeadPEmitter.particles[i].isActive = false;
+            }
+            
+            for (int i=0; i<FG_PARTICLES; i++)
+            {
+                fgPEmitter.particles[i].isActive = false;
             }
             
             player.onDeadScaleEasing.t = 0;
@@ -1267,5 +1382,12 @@ void KillPlayer (Player *p)
         // Init particle
         InitParticle(&p->onDeadPEmitter.particles[i], p->onDeadPEmitter.source, p->onDeadPEmitter.spawnRadius, p->onDeadPEmitter.position);
     }
+}
+
+float CosInterpolation (float start, float end, float percent)
+{
+    if (percent >= 1) return end;
     
+    percent = (-cos(PI * percent)) / 2 + .5f;
+    return start + percent * (end - start);
 }
