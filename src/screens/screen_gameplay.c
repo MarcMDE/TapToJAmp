@@ -43,7 +43,7 @@
 #define PLAYER_PARTICLES 60
 #define PLAYER_ONDEAD_PARTICLES 50
 #define FG_PARTICLES 20
-#define MAX_LOWBGS 6
+#define MAX_GROUND_PIECES 23
 #define CELL_SIZE 48
 #define ASSETS_SCALE 1
 
@@ -251,9 +251,12 @@ static float mainCameraDownPercent;
 static Texture2D bgTexture;
 static Texture2D lowBgTexture;
 
-static Vector2 lowBgsPosition[MAX_LOWBGS];
+static Vector2 lowBgsPosition[MAX_GROUND_PIECES];
 
 static ParticleEmitter fgPEmitter;
+
+static int startMessageFramesCounter;
+static bool drawStartMessage;
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -325,10 +328,12 @@ void InitGameplayScreen(void)
     onCameraAuxPosition = Vector2Zero();
     
     isGameplayStopped = true;
+    startMessageFramesCounter = 0;
+    drawStartMessage = true;
     
     // Counter on player dead (before level reset)
     deadCounter = 0;
-    deadSpan = 0.75f * GAME_SPEED;
+    deadSpan = 0.65f * GAME_SPEED;
     deadFadeAlpha = 0;
     deadFadeIn = true;
     isDeadFadeFinished = true;
@@ -362,21 +367,21 @@ void InitGameplayScreen(void)
     progressBar.isActive = true;
     
     bgTexture = LoadTexture("assets/gameplay/bg_main.png");
-    lowBgTexture = LoadTexture("assets/gameplay/bg3_main.png");
+    lowBgTexture = LoadTexture("assets/gameplay/ground_main.png");
     
     // Init Low Bgs Position
-    for (int i=0; i<MAX_LOWBGS; i++)
+    for (int i=0; i<MAX_GROUND_PIECES; i++)
     {
-        lowBgsPosition[i].y = GetScreenHeight() - lowBgTexture.height;
+        lowBgsPosition[i].y = GetScreenHeight() - lowBgTexture.height * 2;
         lowBgsPosition[i].x = lowBgTexture.width * i;
     }
     
     // Init fgPEmitter
     fgPEmitter.offset = Vector2Zero();
-    fgPEmitter.position = (Vector2){GetScreenWidth(), 0};
-    fgPEmitter.spawnRadius = 50;
-    fgPEmitter.gravity.direction = Vector2One();
-    fgPEmitter.gravity.value = 0.002;
+    fgPEmitter.position = (Vector2){GetScreenWidth() + 30, -30};
+    fgPEmitter.spawnRadius = 30;
+    fgPEmitter.gravity.direction = (Vector2){0, 1};
+    fgPEmitter.gravity.value = 0.0025;
     fgPEmitter.gravity.force = Vector2FloatProduct(fgPEmitter.gravity.direction,  fgPEmitter.gravity.value);
     fgPEmitter.ppf = 3.5f/60.0f;
     fgPEmitter.frameParticles = 0;
@@ -384,20 +389,20 @@ void InitGameplayScreen(void)
     fgPEmitter.remainingParticles = 0;
     fgPEmitter.isBurst = false;
     
-    fgPEmitter.source.direction[0] = (Vector2){-1, 0.2f};
+    fgPEmitter.source.direction[0] = (Vector2){-1, 0.35f};
     fgPEmitter.source.direction[1] = (Vector2){-1, 0.5f};
     fgPEmitter.source.rotation[0] = 0;
     fgPEmitter.source.rotation[1] = 360;
-    fgPEmitter.source.scale[0] = 2;
-    fgPEmitter.source.scale[1] = 5;
-    fgPEmitter.source.movementSpeed[0] = (Vector2){6, 2};
-    fgPEmitter.source.movementSpeed[1] = (Vector2){8, 4};
+    fgPEmitter.source.scale[0] = 3;
+    fgPEmitter.source.scale[1] = 7;
+    fgPEmitter.source.movementSpeed[0] = (Vector2){3.5f, 0.5f};
+    fgPEmitter.source.movementSpeed[1] = (Vector2){5, 1.25f};
     fgPEmitter.source.rotationSpeed[0] = 1;
     fgPEmitter.source.rotationSpeed[1] = 2;
-    fgPEmitter.source.scaleSpeed[0] = -0.003f;
-    fgPEmitter.source.scaleSpeed[1] = -0.005f;
-    fgPEmitter.source.lifeTime[0] = 3.5f * GAME_SPEED;
-    fgPEmitter.source.lifeTime[1] = 4.5f * GAME_SPEED;
+    fgPEmitter.source.scaleSpeed[0] = -0.0075f;
+    fgPEmitter.source.scaleSpeed[1] = -0.015f;
+    fgPEmitter.source.lifeTime[0] = 4.75f * GAME_SPEED;
+    fgPEmitter.source.lifeTime[1] = 5.2f * GAME_SPEED;
     fgPEmitter.source.color = WHITE;
     fgPEmitter.source.texture = LoadTexture("assets/gameplay/glow16.png");
     
@@ -457,21 +462,21 @@ void UpdateGameplayScreen(void)
                         progressBar.isActive = false;
                     }
                     
-                    for (int i=0; i<MAX_LOWBGS; i++)
+                    for (int i=0; i<MAX_GROUND_PIECES; i++)
                     {
                         lowBgsPosition[i].x -= 3;
                     }
-                    for (int i=0; i<MAX_LOWBGS; i++)
+                    for (int i=0; i<MAX_GROUND_PIECES; i++)
                     {
                         if (lowBgsPosition[i].x + lowBgTexture.width <= 0)
                         {
                             float aux = 0;
-                            for (int j=0; j<MAX_LOWBGS; j++)
+                            for (int j=0; j<MAX_GROUND_PIECES; j++)
                             {
                                 if (lowBgsPosition[j].x > aux) aux = lowBgsPosition[j].x;
                             }
                             lowBgsPosition[i].x = aux + lowBgTexture.width;
-                            i=MAX_LOWBGS;
+                            i=MAX_GROUND_PIECES;
                         }
                     }
                     
@@ -527,6 +532,19 @@ void UpdateGameplayScreen(void)
                     gameElementsCamera.isMoving = true;
                     mainCamera.isMoving = true;
                 }
+                
+                drawStartMessage = true;
+                if (startMessageFramesCounter > 8)
+                {
+                    if (startMessageFramesCounter > 10)
+                    {
+                        startMessageFramesCounter = 0;
+                    }
+
+                    drawStartMessage = false;
+                }
+                
+                startMessageFramesCounter++;
             }
         }
     }
@@ -545,12 +563,12 @@ void UpdateGameplayScreen(void)
 void DrawGameplayScreen(void)
 {
     // Draw BG
-    DrawTextureEx(bgTexture, (Vector2){0, 0}, 0, 2, WHITE);
+    DrawTextureEx(bgTexture, (Vector2){0, 0}, 0, 8, WHITE);
     
-    for (int i=0; i<MAX_LOWBGS; i++)
+    for (int i=0; i<MAX_GROUND_PIECES; i++)
     {
         onCameraAuxPosition = GetOnCameraPosition(lowBgsPosition[i], mainCamera);
-        DrawTextureV(lowBgTexture, onCameraAuxPosition, DARKBLUE);
+        DrawTextureV(lowBgTexture, onCameraAuxPosition, WHITE);
     }
     
     // Draw Ground
@@ -606,23 +624,19 @@ void DrawGameplayScreen(void)
     if (isAttemptsCounterActive) DrawText(FormatText("%i", attemptsCounter), attemptsCounterPosition.x, attemptsCounterPosition.y, 200, WHITE);
     
     DrawPlayer(player);
-    
-    int part = 0;
+   
     for (int i=0; i<FG_PARTICLES; i++)
     {
         if (fgPEmitter.particles[i].isActive)
         {
-            onCameraAuxPosition = GetOnCameraPosition(fgPEmitter.particles[i].transform.position, mainCamera);
+            //onCameraAuxPosition = GetOnCameraPosition(fgPEmitter.particles[i].transform.position, mainCamera);
             
             DrawTexturePro(fgPEmitter.source.texture, (Rectangle){0, 0, fgPEmitter.source.texture.width, fgPEmitter.source.texture.height}, 
-            (Rectangle){onCameraAuxPosition.x, onCameraAuxPosition.y, fgPEmitter.source.texture.width * fgPEmitter.particles[i].transform.scale, 
+            (Rectangle){fgPEmitter.particles[i].transform.position.x, fgPEmitter.particles[i].transform.position.y, fgPEmitter.source.texture.width * fgPEmitter.particles[i].transform.scale, 
             fgPEmitter.source.texture.height * fgPEmitter.particles[i].transform.scale}, (Vector2){fgPEmitter.source.texture.width/2, fgPEmitter.source.texture.height/2}, 
             -fgPEmitter.particles[i].transform.rotation, fgPEmitter.particles[i].color);
-            part++;
         }
     }
-    
-    printf("Part: %i \n", part);
     
     DrawRectangleRec(progressBar.back, LIGHTGRAY);
     DrawRectangleRec(progressBar.front, RED);
@@ -633,6 +647,8 @@ void DrawGameplayScreen(void)
         DrawText("PAUSE", GetScreenWidth()/2 - 100, GetScreenHeight()/2-20, 40, WHITE);
         DrawText("<P>", GetScreenWidth()/2 - 45, GetScreenHeight()/2 + 30, 24, WHITE); 
     }
+    
+    if (isGameplayStopped && drawStartMessage) DrawText("PRESS SPACE!!!", 10, GetScreenHeight()-30, 20, BLACK);
 
     if (!isDeadFadeFinished)
     {
@@ -649,12 +665,16 @@ void UnloadGameplayScreen(void)
     free(platfsSourcePosition);
     free(player.pEmitter.particles);
     free(player.onDeadPEmitter.particles);
+    free(fgPEmitter.particles);
     
     UnloadTexture(player.texture);
     UnloadTexture(trisTexture);
     UnloadTexture(platfsTexture);
     UnloadTexture(player.pEmitter.source.texture);
     UnloadTexture(player.onDeadPEmitter.source.texture);
+    UnloadTexture(fgPEmitter.source.texture);
+    UnloadTexture(bgTexture);
+    UnloadTexture(lowBgTexture);
 }
 
 // Gameplay Screen should finish?
@@ -723,7 +743,7 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->pEmitter.gravity.direction = (Vector2){0.65f, 1};
     p->pEmitter.gravity.value = 0.03f;
     p->pEmitter.gravity.force = Vector2FloatProduct(p->pEmitter.gravity.direction,  p->pEmitter.gravity.value);
-    p->pEmitter.ppf = 0.7f;
+    p->pEmitter.ppf = 0.85f;
     p->pEmitter.frameParticles = 0;
     p->pEmitter.particlesAmount = 0;
     p->pEmitter.remainingParticles = 0;
@@ -734,17 +754,17 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->pEmitter.source.direction[1] = (Vector2){-1, -1};
     p->pEmitter.source.rotation[0] = 0;
     p->pEmitter.source.rotation[1] = 360;
-    p->pEmitter.source.scale[0] = 2.5f;
-    p->pEmitter.source.scale[1] = 3.75f;
-    p->pEmitter.source.movementSpeed[0] = (Vector2){2.5f, 0.6f};
-    p->pEmitter.source.movementSpeed[1] = (Vector2){4, 0.7f};
-    p->pEmitter.source.rotationSpeed[0] = 0.25f;
+    p->pEmitter.source.scale[0] = 1.5f;
+    p->pEmitter.source.scale[1] = 3;
+    p->pEmitter.source.movementSpeed[0] = (Vector2){3, 0.5f};
+    p->pEmitter.source.movementSpeed[1] = (Vector2){5, 0.8f};
+    p->pEmitter.source.rotationSpeed[0] = 0.5f;
     p->pEmitter.source.rotationSpeed[1] = 1;
     p->pEmitter.source.scaleSpeed[0] = -0.0085f;
     p->pEmitter.source.scaleSpeed[1] = -0.012f;
-    p->pEmitter.source.lifeTime[0] = 0.6f * GAME_SPEED;
-    p->pEmitter.source.lifeTime[1] = 0.85f * GAME_SPEED;
-    p->pEmitter.source.color = (Color){0, 255, 50, 175};
+    p->pEmitter.source.lifeTime[0] = 0.9f * GAME_SPEED;
+    p->pEmitter.source.lifeTime[1] = 1.2f * GAME_SPEED;
+    p->pEmitter.source.color = (Color){40, 255, 40, 255};
     p->pEmitter.source.texture = LoadTexture("assets/gameplay/particle_main.png");
     
     p->pEmitter.particles = malloc(sizeof(Particle)*PLAYER_PARTICLES); // Remember to free
@@ -757,9 +777,9 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
 
     p->onDeadPEmitter.offset = Vector2Zero();
     p->onDeadPEmitter.position = p->transform.position;
-    p->onDeadPEmitter.spawnRadius = 0;
-    p->onDeadPEmitter.gravity.direction = Vector2Zero();
-    p->onDeadPEmitter.gravity.value = 0;
+    p->onDeadPEmitter.spawnRadius = 5;
+    p->onDeadPEmitter.gravity.direction = (Vector2){-0.5f, 1};
+    p->onDeadPEmitter.gravity.value = 0.2f;
     p->onDeadPEmitter.gravity.force = Vector2FloatProduct(p->onDeadPEmitter.gravity.direction,  p->onDeadPEmitter.gravity.value);
     p->onDeadPEmitter.ppf = PLAYER_ONDEAD_PARTICLES;
     p->onDeadPEmitter.frameParticles = 0;
@@ -767,22 +787,22 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->onDeadPEmitter.remainingParticles = 0;
     p->onDeadPEmitter.isBurst = true;
     
-    p->onDeadPEmitter.source.direction[0] = (Vector2){-1, -1};
-    p->onDeadPEmitter.source.direction[1] = (Vector2){1, 1};
+    p->onDeadPEmitter.source.direction[0] = (Vector2){1, -0.3f};
+    p->onDeadPEmitter.source.direction[1] = (Vector2){1, -1};
     p->onDeadPEmitter.source.rotation[0] = 0;
     p->onDeadPEmitter.source.rotation[1] = 360;
     p->onDeadPEmitter.source.scale[0] = 0.5f;
     p->onDeadPEmitter.source.scale[1] = 1;
-    p->onDeadPEmitter.source.movementSpeed[0] = (Vector2){5.5f, 5.5f};
-    p->onDeadPEmitter.source.movementSpeed[1] = (Vector2){6.5, 6.5};
+    p->onDeadPEmitter.source.movementSpeed[0] = (Vector2){1, 1};
+    p->onDeadPEmitter.source.movementSpeed[1] = (Vector2){10, 10};
     p->onDeadPEmitter.source.rotationSpeed[0] = 3.5f;
     p->onDeadPEmitter.source.rotationSpeed[1] = 6;
     p->onDeadPEmitter.source.scaleSpeed[0] = 0.05f;
     p->onDeadPEmitter.source.scaleSpeed[1] = 0.1f;
     p->onDeadPEmitter.source.lifeTime[0] = deadSpan;
     p->onDeadPEmitter.source.lifeTime[1] = deadSpan;
-    p->onDeadPEmitter.source.color = (Color){0, 255, 50, 255};
-    p->onDeadPEmitter.source.texture = LoadTexture("assets/gameplay/particle_dead.png");
+    p->onDeadPEmitter.source.color = (Color){255, 230, 0, 100};
+    p->onDeadPEmitter.source.texture = LoadTexture("assets/gameplay/glow16.png");
     
     p->onDeadPEmitter.particles = malloc(sizeof(Particle)*PLAYER_ONDEAD_PARTICLES); // Remember to free
     p->onDeadPEmitter.isActive = false;
@@ -901,7 +921,6 @@ void DrawPlayer (Player p)
                 -p.pEmitter.particles[i].transform.rotation, p.pEmitter.particles[i].color);
             }
         }
-        
         onCameraAuxPosition = GetOnCameraPosition(p.transform.position, mainCamera);
         
         DrawTexturePro(p.texture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 

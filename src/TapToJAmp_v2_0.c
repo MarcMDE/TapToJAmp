@@ -272,7 +272,9 @@ void UpdateDrawFrame()
         }
         
         if (onTransition) DrawTransition();
-    
+        
+        DrawText("@MarcMDE", 10, 10, 20, WHITE);
+        
         DrawFPS(GetScreenWidth() - 80, 5);
     
     EndDrawing();
