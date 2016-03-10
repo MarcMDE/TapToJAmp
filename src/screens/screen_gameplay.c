@@ -478,7 +478,7 @@ void UpdateGameplayScreen(void)
                     
                     for (int i=0; i<MAX_GROUND_PIECES; i++)
                     {
-                        lowBgsPosition[i].x -= 3;
+                        lowBgsPosition[i].x -= gameElementsCamera.speed.x;
                     }
                     for (int i=0; i<MAX_GROUND_PIECES; i++)
                     {
