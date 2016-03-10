@@ -48,7 +48,7 @@ static Vector2 cubesPosition[MAX_CUBES];
 float cubesRotation[MAX_CUBES];
 float cubesScale[MAX_CUBES];
 
-static char playAgainText[25] = "Press ENTER to play again";
+static char playAgainText[30] = "Press ENTER to play again";
 static Rectangle playAgainBg;
 static int playAgainTextSize;
 
@@ -59,7 +59,6 @@ static int playAgainTextSize;
 // Ending Screen Initialization logic
 void InitEndingScreen(void)
 {
-    // TODO: Initialize ENDING screen variables here!
     framesCounter = 0;
     finishScreen = 0;
     

@@ -77,8 +77,8 @@ int main(void)
 
     #if defined(DEBUG)
     // DEBUG
-    InitTitleScreen();
-    currentScreen = TITLE;
+    InitEndingScreen();
+    currentScreen = ENDING;
     #else
         
     // Setup and Init first screen
