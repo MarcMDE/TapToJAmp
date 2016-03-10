@@ -279,7 +279,7 @@ void UpdateDrawFrame()
         
         DrawText("@MarcMDE", 10, 10, 20, WHITE);
         
-        DrawFPS(GetScreenWidth() - 80, 5);
+        //DrawFPS(GetScreenWidth() - 80, 5);
     
     EndDrawing();
     //----------------------------------------------------------------------------------

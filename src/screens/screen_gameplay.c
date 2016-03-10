@@ -303,14 +303,14 @@ void InitGameplayScreen(void)
     
     LoadMap();
     
-    mainVolume = 0.01f;
+    mainVolume = 0.15f;
     
     // Set ground position in the bottom of the desired cell. 
     groundY = GetOnInverseGridPosition((Vector2){0, 2}).y + CELL_SIZE/2;
     
     // Set gravity
     gravity[0].direction = (Vector2){0, 1};
-    gravity[0].value = 1.55f;
+    gravity[0].value = 1.45f;
     gravity[0].force = Vector2FloatProduct(gravity[0].direction, gravity[0].value);
     
     gravity[1].direction = (Vector2){0, 1};
@@ -351,7 +351,7 @@ void InitGameplayScreen(void)
     
     isGamePaused = false;
     
-    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 17.85f}, 0.5f * GAME_SPEED);
+    InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 18}, 0.5f * GAME_SPEED);
     playerDeadSound = LoadSound("assets/gameplay/deadSound2.ogg");
     SetSoundVolume(playerDeadSound, mainVolume);
     
