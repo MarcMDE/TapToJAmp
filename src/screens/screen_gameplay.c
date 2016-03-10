@@ -778,8 +778,8 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->onDeadPEmitter.offset = Vector2Zero();
     p->onDeadPEmitter.position = p->transform.position;
     p->onDeadPEmitter.spawnRadius = 5;
-    p->onDeadPEmitter.gravity.direction = (Vector2){-0.5f, 1};
-    p->onDeadPEmitter.gravity.value = 0.2f;
+    p->onDeadPEmitter.gravity.direction = (Vector2){-0.1, 1};
+    p->onDeadPEmitter.gravity.value = 0.4f;
     p->onDeadPEmitter.gravity.force = Vector2FloatProduct(p->onDeadPEmitter.gravity.direction,  p->onDeadPEmitter.gravity.value);
     p->onDeadPEmitter.ppf = PLAYER_ONDEAD_PARTICLES;
     p->onDeadPEmitter.frameParticles = 0;
@@ -791,17 +791,17 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->onDeadPEmitter.source.direction[1] = (Vector2){1, -1};
     p->onDeadPEmitter.source.rotation[0] = 0;
     p->onDeadPEmitter.source.rotation[1] = 360;
-    p->onDeadPEmitter.source.scale[0] = 0.5f;
-    p->onDeadPEmitter.source.scale[1] = 1;
+    p->onDeadPEmitter.source.scale[0] = 0.4f;
+    p->onDeadPEmitter.source.scale[1] = 0.8f;
     p->onDeadPEmitter.source.movementSpeed[0] = (Vector2){1, 1};
     p->onDeadPEmitter.source.movementSpeed[1] = (Vector2){10, 10};
-    p->onDeadPEmitter.source.rotationSpeed[0] = 3.5f;
-    p->onDeadPEmitter.source.rotationSpeed[1] = 6;
-    p->onDeadPEmitter.source.scaleSpeed[0] = 0.05f;
-    p->onDeadPEmitter.source.scaleSpeed[1] = 0.1f;
+    p->onDeadPEmitter.source.rotationSpeed[0] = 1;
+    p->onDeadPEmitter.source.rotationSpeed[1] = 2;
+    p->onDeadPEmitter.source.scaleSpeed[0] = 0.005f;
+    p->onDeadPEmitter.source.scaleSpeed[1] = 0.01f;
     p->onDeadPEmitter.source.lifeTime[0] = deadSpan;
     p->onDeadPEmitter.source.lifeTime[1] = deadSpan;
-    p->onDeadPEmitter.source.color = (Color){255, 230, 0, 100};
+    p->onDeadPEmitter.source.color = (Color){255, 230, 0, 150};
     p->onDeadPEmitter.source.texture = LoadTexture("assets/gameplay/glow16.png");
     
     p->onDeadPEmitter.particles = malloc(sizeof(Particle)*PLAYER_ONDEAD_PARTICLES); // Remember to free
