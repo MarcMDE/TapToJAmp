@@ -78,8 +78,6 @@ void InitTitleScreen(void)
     isPlayMessageFadingIn = true;
     
     showCredits = false;
-    
-    PlayMusicStream("assets/title/music.ogg");
 }
 
 // Title Screen Update logic
