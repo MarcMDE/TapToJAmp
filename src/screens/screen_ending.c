@@ -26,6 +26,9 @@
 #include "raylib.h"
 #include "screens.h"
 
+#define MAX_CUBES 150
+#define CELL_SIZE 48
+
 //----------------------------------------------------------------------------------
 // Global Variables Definition (local to this module)
 //----------------------------------------------------------------------------------
@@ -33,6 +36,21 @@
 // Ending screen global variables
 static int framesCounter;
 static int finishScreen;
+
+static int cubesAmount;
+static int counterMult; 
+
+static Texture2D victoryTexture;
+static int victoryTextureScale;
+
+static Texture2D cube;
+static Vector2 cubesPosition[MAX_CUBES];
+float cubesRotation[MAX_CUBES];
+float cubesScale[MAX_CUBES];
+
+static char playAgainText[25] = "Press ENTER to play again";
+static Rectangle playAgainBg;
+static int playAgainTextSize;
 
 //----------------------------------------------------------------------------------
 // Ending Screen Functions Definition
@@ -44,13 +62,38 @@ void InitEndingScreen(void)
     // TODO: Initialize ENDING screen variables here!
     framesCounter = 0;
     finishScreen = 0;
+    
+    counterMult = 1;
+    cubesAmount = 0;
+    cube = LoadTexture("assets/gameplay/character/main_cube.png");
+    
+    victoryTexture = LoadTexture("assets/ending/victory_main.png");
+    victoryTextureScale = 10;
+
+    playAgainTextSize = 60;
+    playAgainBg = (Rectangle){GetScreenWidth()/2 - MeasureText(playAgainText, playAgainTextSize) / 2 - 2, GetScreenHeight() - 80 - 2, 
+    MeasureText(playAgainText, playAgainTextSize) + 4, playAgainTextSize + 4};
 }
 
 // Ending Screen Update logic
 void UpdateEndingScreen(void)
-{
-    // TODO: Update ENDING screen variables here!
-
+{   
+    if (cubesAmount < MAX_CUBES)
+    {
+        if (framesCounter > 60)
+        {
+            cubesPosition[cubesAmount] = (Vector2){GetRandomValue(0, GetScreenWidth()), GetRandomValue(0, GetScreenHeight())};
+            cubesRotation[cubesAmount] = GetRandomValue(0, 360);
+            cubesScale[cubesAmount] = GetRandomValue(1, 4);
+            
+            framesCounter = 0;
+            cubesAmount++;
+            counterMult++;
+        }
+        
+        framesCounter += counterMult;
+    }   
+    
     // Press enter to return to TITLE screen
     if (IsKeyPressed(KEY_ENTER))
     {
@@ -62,15 +105,32 @@ void UpdateEndingScreen(void)
 void DrawEndingScreen(void)
 {
     // TODO: Draw ENDING screen here!
-    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), BLUE);
-    DrawText("ENDING SCREEN", 20, 20, 40, DARKBLUE);
-    DrawText("PRESS ENTER to RETURN to TITLE SCREEN", 160, 220, 20, DARKBLUE);
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), BEIGE);
+    
+    for (int i=0; i<cubesAmount; i++)
+    {
+        DrawTexturePro(cube, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){cubesPosition[i].x, 
+        cubesPosition[i].y, CELL_SIZE * cubesScale[i], CELL_SIZE * cubesScale[i]}, (Vector2){(CELL_SIZE * cubesScale[i]) / 2, 
+        (CELL_SIZE * cubesScale[i]) / 2}, -cubesRotation[i], WHITE);   
+    }
+    
+    DrawTextureEx(victoryTexture, (Vector2){GetScreenWidth()/2-(victoryTexture.width*victoryTextureScale)/2, GetScreenHeight()/2-(victoryTexture.height*victoryTextureScale)/2-50}, 
+    0, victoryTextureScale, WHITE);
+    
+    //DrawText("VICTORY!", GetScreenWidth()/2 - 120, 20, 50, WHITE);
+    if (cubesAmount >= MAX_CUBES)
+    {
+        DrawRectangleRec(playAgainBg, BLACK);
+        DrawText(playAgainText, playAgainBg.x + 2, playAgainBg.y + 2, playAgainTextSize, WHITE);        
+    }
+    
+    DrawRectangle(5, 5, 120, 30, BLACK);
 }
 
 // Ending Screen Unload logic
 void UnloadEndingScreen(void)
 {
-    // TODO: Unload ENDING screen variables here!
+    UnloadTexture(cube);
 }
 
 // Ending Screen should finish?

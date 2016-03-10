@@ -257,6 +257,10 @@ static ParticleEmitter fgPEmitter;
 
 static int startMessageFramesCounter;
 static bool drawStartMessage;
+
+static Sound playerDeadSound;
+
+static float mainVolume;
 //----------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------
@@ -298,6 +302,8 @@ void InitGameplayScreen(void)
     finishScreen = 0;
     
     LoadMap();
+    
+    mainVolume = 0.01f;
     
     // Set ground position in the bottom of the desired cell. 
     groundY = GetOnInverseGridPosition((Vector2){0, 2}).y + CELL_SIZE/2;
@@ -346,6 +352,8 @@ void InitGameplayScreen(void)
     isGamePaused = false;
     
     InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 17.85f}, 0.5f * GAME_SPEED);
+    playerDeadSound = LoadSound("assets/gameplay/deadsound.ogg");
+    SetSoundVolume(playerDeadSound, mainVolume);
     
     // Init Triangles
     trisTexture = LoadTexture("assets/gameplay/tri_main.png");
@@ -422,7 +430,13 @@ void UpdateGameplayScreen(void)
 {   
     if (isDeadFadeFinished)
     {
-        if (IsKeyPressed('P')) isGamePaused = !isGamePaused;
+        if (IsKeyPressed('P')) 
+        {
+            isGamePaused = !isGamePaused;
+            
+            if (isGamePaused) PauseMusicStream();
+            else ResumeMusicStream();
+        }
         if (IsKeyPressed('R')) isDeadFadeFinished = false;
         
         if (!isGamePaused)
@@ -494,7 +508,13 @@ void UpdateGameplayScreen(void)
                     // Check if player landed (or collided) on a platfsorm.
                     CheckPlayerPlatfsCollision(&player, platfs);
                     
-                    if (gameElementsCamera.position.x/CELL_SIZE > gridLenght.x + 10) finishScreen = 1;
+                    UpdateMusicStream();
+                    
+                    if (gameElementsCamera.position.x/CELL_SIZE > gridLenght.x + 10) 
+                    {
+                        StopMusicStream();
+                        finishScreen = 1;
+                    }
                     
                     if (isAttemptsCounterActive)
                     {
@@ -515,8 +535,10 @@ void UpdateGameplayScreen(void)
                     else
                     {
                         deadCounter++;
-                        // TODO: Add dead explosion effects (anim + sound)
+                        // TODO: Add dead explosion sound
+                        
                         UpdateParticleEmitter(&player.onDeadPEmitter, PLAYER_ONDEAD_PARTICLES, player.transform.position);
+                        UpdateParticleEmitter(&player.pEmitter, PLAYER_PARTICLES, player.transform.position);
                         
                         player.onDeadScaleEasing.t = deadCounter;
                         player.onDeadCircleSize = CubicEaseOut(player.onDeadScaleEasing.t, player.onDeadScaleEasing.b, player.onDeadScaleEasing.c, player.onDeadScaleEasing.d);
@@ -531,6 +553,8 @@ void UpdateGameplayScreen(void)
                     isGameplayStopped = false;
                     gameElementsCamera.isMoving = true;
                     mainCamera.isMoving = true;
+                    PlayMusicStream("assets/gameplay/music.ogg");
+                    SetMusicVolume(mainVolume);
                 }
                 
                 drawStartMessage = true;
@@ -545,6 +569,37 @@ void UpdateGameplayScreen(void)
                 }
                 
                 startMessageFramesCounter++;
+            }
+        }
+        else
+        {
+            // If is game paused. Set music volume
+            
+            if (IsKeyDown(KEY_LEFT))
+            {
+                if (mainVolume > 0)
+                {
+                    mainVolume-=0.003f;
+                }
+                else 
+                {
+                    mainVolume = 0;
+                }
+                SetMusicVolume(mainVolume);
+                SetSoundVolume(playerDeadSound, mainVolume);
+            }
+            else if (IsKeyDown(KEY_RIGHT))
+            {
+                if (mainVolume < 1)
+                {
+                    mainVolume += 0.003f;
+                }
+                else
+                {
+                    mainVolume = 1;
+                }
+                SetMusicVolume(mainVolume);
+                SetSoundVolume(playerDeadSound, mainVolume);
             }
         }
     }
@@ -641,14 +696,20 @@ void DrawGameplayScreen(void)
     DrawRectangleRec(progressBar.back, LIGHTGRAY);
     DrawRectangleRec(progressBar.front, RED);
     
+    if (isGameplayStopped && drawStartMessage) DrawText("PRESS SPACE!!!", 10, GetScreenHeight()-30, 20, BLACK);
+    
     if (isGamePaused)
     {
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(LIGHTGRAY, 0.45f));
         DrawText("PAUSE", GetScreenWidth()/2 - 100, GetScreenHeight()/2-20, 40, WHITE);
         DrawText("<P>", GetScreenWidth()/2 - 45, GetScreenHeight()/2 + 30, 24, WHITE); 
+        
+        DrawText("Set volume using arrow keys.", 325, GetScreenHeight() - 50, 20, BLACK);
+        DrawText("Volume: ", 415, GetScreenHeight() - 25, 20, BLACK);
+        DrawText("<", 500, GetScreenHeight() - 25, 20, BLACK);
+        DrawText(FormatText("%02.0f", mainVolume * 100), 515, GetScreenHeight() - 25, 20, BLACK);
+        DrawText(">", 548, GetScreenHeight() - 25, 20, BLACK);
     }
-    
-    if (isGameplayStopped && drawStartMessage) DrawText("PRESS SPACE!!!", 10, GetScreenHeight()-30, 20, BLACK);
 
     if (!isDeadFadeFinished)
     {
@@ -675,6 +736,8 @@ void UnloadGameplayScreen(void)
     UnloadTexture(fgPEmitter.source.texture);
     UnloadTexture(bgTexture);
     UnloadTexture(lowBgTexture);
+    
+    UnloadSound(playerDeadSound);
 }
 
 // Gameplay Screen should finish?
@@ -775,9 +838,9 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
         p->pEmitter.particles[i].isActive = false;
     }
 
-    p->onDeadPEmitter.offset = Vector2Zero();
-    p->onDeadPEmitter.position = p->transform.position;
-    p->onDeadPEmitter.spawnRadius = 5;
+    p->onDeadPEmitter.offset = (Vector2){-CELL_SIZE/2, 0};
+    p->onDeadPEmitter.position = Vector2Add(p->transform.position, p->onDeadPEmitter.offset);
+    p->onDeadPEmitter.spawnRadius = 15;
     p->onDeadPEmitter.gravity.direction = (Vector2){-0.1, 1};
     p->onDeadPEmitter.gravity.value = 0.4f;
     p->onDeadPEmitter.gravity.force = Vector2FloatProduct(p->onDeadPEmitter.gravity.direction,  p->onDeadPEmitter.gravity.value);
@@ -801,7 +864,7 @@ void InitPlayer(Player *p, Vector2 coordinates, Vector2 speed, float rotationSpa
     p->onDeadPEmitter.source.scaleSpeed[1] = 0.01f;
     p->onDeadPEmitter.source.lifeTime[0] = deadSpan;
     p->onDeadPEmitter.source.lifeTime[1] = deadSpan;
-    p->onDeadPEmitter.source.color = (Color){255, 230, 0, 150};
+    p->onDeadPEmitter.source.color = (Color){255, 255, 0, 255};
     p->onDeadPEmitter.source.texture = LoadTexture("assets/gameplay/glow16.png");
     
     p->onDeadPEmitter.particles = malloc(sizeof(Particle)*PLAYER_ONDEAD_PARTICLES); // Remember to free
@@ -909,18 +972,6 @@ void DrawPlayer (Player p)
 {
     if (p.isAlive)
     {
-        for (int i=0; i<PLAYER_PARTICLES; i++)
-        {
-            if (p.pEmitter.particles[i].isActive)
-            {
-                onCameraAuxPosition = GetOnCameraPosition(p.pEmitter.particles[i].transform.position, mainCamera);
-                
-                DrawTexturePro(p.pEmitter.source.texture, (Rectangle){0, 0, p.pEmitter.source.texture.width, p.pEmitter.source.texture.height}, 
-                (Rectangle){onCameraAuxPosition.x, onCameraAuxPosition.y, p.pEmitter.source.texture.width * p.pEmitter.particles[i].transform.scale, 
-                p.pEmitter.source.texture.height * p.pEmitter.particles[i].transform.scale}, (Vector2){p.pEmitter.source.texture.width/2, p.pEmitter.source.texture.height/2}, 
-                -p.pEmitter.particles[i].transform.rotation, p.pEmitter.particles[i].color);
-            }
-        }
         onCameraAuxPosition = GetOnCameraPosition(p.transform.position, mainCamera);
         
         DrawTexturePro(p.texture, (Rectangle){0, 0, CELL_SIZE, CELL_SIZE}, (Rectangle){onCameraAuxPosition.x, 
@@ -944,6 +995,19 @@ void DrawPlayer (Player p)
                 p.onDeadPEmitter.source.texture.height * p.onDeadPEmitter.particles[i].transform.scale/2}, 
                 -p.onDeadPEmitter.particles[i].transform.rotation, p.onDeadPEmitter.particles[i].color);
             }
+        }
+    }
+    
+    for (int i=0; i<PLAYER_PARTICLES; i++)
+    {
+        if (p.pEmitter.particles[i].isActive)
+        {
+            onCameraAuxPosition = GetOnCameraPosition(p.pEmitter.particles[i].transform.position, mainCamera);
+            
+            DrawTexturePro(p.pEmitter.source.texture, (Rectangle){0, 0, p.pEmitter.source.texture.width, p.pEmitter.source.texture.height}, 
+            (Rectangle){onCameraAuxPosition.x, onCameraAuxPosition.y, p.pEmitter.source.texture.width * p.pEmitter.particles[i].transform.scale, 
+            p.pEmitter.source.texture.height * p.pEmitter.particles[i].transform.scale}, (Vector2){p.pEmitter.source.texture.width/2, p.pEmitter.source.texture.height/2}, 
+            -p.pEmitter.particles[i].transform.rotation, p.pEmitter.particles[i].color);
         }
     }
 }
@@ -1097,6 +1161,8 @@ void ResetGameplay ()
             player.rotationEasing.t = 0;
             player.rotationEasing.b = 0;
             player.rotationEasing.isFinished = true;
+            
+            player.pEmitter.isBurst = false;
             
             for (int i=0; i<PLAYER_PARTICLES; i++)
             {
@@ -1390,8 +1456,12 @@ void KillPlayer (Player *p)
 {
     p->isAlive = false;   
     
+    PlaySound(playerDeadSound);
+    
     p->onDeadScaleEasing.isFinished = false;
     p->onDeadPEmitter.isActive = true;
+    
+    p->pEmitter.isBurst = true;
     
     // Init onDeadPEmitter
     p->onDeadPEmitter.position = p->transform.position;
@@ -1401,6 +1471,8 @@ void KillPlayer (Player *p)
         // Init particle
         InitParticle(&p->onDeadPEmitter.particles[i], p->onDeadPEmitter.source, p->onDeadPEmitter.spawnRadius, p->onDeadPEmitter.position);
     }
+    
+    StopMusicStream();
 }
 
 float CosInterpolation (float start, float end, float percent)

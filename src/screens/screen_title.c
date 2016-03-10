@@ -37,6 +37,8 @@ static int finishScreen;
 static int titleTextureScale;
 static Texture2D titleTexture;
 
+static Texture2D bgTexture;
+
 static char *playMessage; 
 int playMessageFontSize;
 
@@ -45,6 +47,8 @@ static int playMessageBlinkCounter;
 static int playMessageBlinkDuration;
 static float playMessageAlphaIncrement;
 static bool isPlayMessageFadingIn;
+
+static bool showCredits;
 
 //----------------------------------------------------------------------------------
 // Title Screen Functions Definition
@@ -58,8 +62,10 @@ void InitTitleScreen(void)
     finishScreen = 0;
     
     // Title texture init.
-    titleTextureScale = 3;
+    titleTextureScale = 10;
     titleTexture = LoadTexture("assets/title/TapToJAmp_Title.png");
+    
+    bgTexture = LoadTexture("assets/title/bg_main.png");
     
     // Play message init.
     playMessage = "PRESS SPACE to JAMP!";
@@ -70,12 +76,18 @@ void InitTitleScreen(void)
     playMessageBlinkDuration = 8; // Fade duration (frames)
     playMessageAlphaIncrement = (float)1/playMessageBlinkDuration;
     isPlayMessageFadingIn = true;
+    
+    showCredits = false;
+    
+    PlayMusicStream("assets/title/music.ogg");
 }
 
 // Title Screen Update logic
 void UpdateTitleScreen(void)
 {
     // Update TITLE screen
+    
+    if (IsKeyPressed('C')) showCredits = !showCredits;
 
     // Press SPACE to change to GAMEPLAY screen
     if (IsKeyPressed(KEY_SPACE))
@@ -97,9 +109,7 @@ void UpdateTitleScreen(void)
             // Fade out is twice fast
             playMessageAlpha -= playMessageAlphaIncrement*2;
             playMessageBlinkCounter += 1*2;
-        }
-        
-        
+        }   
     }
     else
     {
@@ -115,12 +125,17 @@ void UpdateTitleScreen(void)
 void DrawTitleScreen(void)
 {
     // Draw TITLE screen
-    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), SKYBLUE);
+    //DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), SKYBLUE);
+    DrawTextureEx(bgTexture, (Vector2){0, 0}, 0, 8, WHITE);
     
     DrawTextureEx(titleTexture, (Vector2){GetScreenWidth()/2-(titleTexture.width*titleTextureScale)/2, GetScreenHeight()/2-(titleTexture.height*titleTextureScale)/2-50}, 
     0, titleTextureScale, WHITE);
     
     DrawText(playMessage, GetScreenWidth()/2-MeasureText(playMessage, playMessageFontSize)/2, GetScreenHeight()-100, playMessageFontSize, Fade(YELLOW, playMessageAlpha));
+    
+    DrawText("Press <P> in game for volume settings", 10, GetScreenHeight() - 22, 20, WHITE);
+    
+    DrawText("Copyright (c) 2016 Marc Montagut", GetScreenWidth()/2 + 105, GetScreenHeight() / 2 + 5, 20, WHITE);
 }
 
 // Title Screen Unload logic
@@ -128,10 +143,12 @@ void UnloadTitleScreen(void)
 {
     // Unload TITLE screen
     UnloadTexture(titleTexture);
+    UnloadTexture(bgTexture);
 }
 
 // Title Screen should finish?
 int FinishTitleScreen(void)
 {
+    //StopMusicStream();
     return finishScreen;
 }

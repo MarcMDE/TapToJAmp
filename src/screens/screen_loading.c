@@ -64,7 +64,7 @@ void UpdateLoadingScreen(void)
 void DrawLoadingScreen(void)
 {
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), BLACK);
-    DrawText("LOADING", 20, 20, 40, LIGHTGRAY);
+    //DrawText("LOADING", 20, 20, 40, LIGHTGRAY);
 }
 
 // Loading Screen Unload logic

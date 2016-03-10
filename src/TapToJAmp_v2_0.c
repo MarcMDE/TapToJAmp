@@ -34,7 +34,7 @@
 #include "raylib.h"
 #include "screens/screens.h"    // NOTE: Defines global variable: currentScreen
 
-#define DEBUG
+//#define DEBUG
 
 #if defined(PLATFORM_WEB)
     #include <emscripten/emscripten.h>
@@ -72,16 +72,20 @@ int main(void)
 	const char windowTitle[20] = "Tap To JAmp v2.0";
     
     InitWindow(screenWidth, screenHeight, windowTitle);
+    
+    InitAudioDevice();
 
     #if defined(DEBUG)
     // DEBUG
     InitTitleScreen();
     currentScreen = TITLE;
     #else
+        
     // Setup and Init first screen
     InitLoadingScreen();
     currentScreen = LOADING;
     #endif
+
     
     #if defined(PLATFORM_WEB)
     emscripten_set_main_loop(UpdateDrawFrame, 0, 1);
@@ -99,7 +103,7 @@ int main(void)
     // De-Initialization
     //--------------------------------------------------------------------------------------
     
-    // TODO: Unload all global loaded data (i.e. fonts) here!
+    CloseAudioDevice();
     
     CloseWindow();        // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
