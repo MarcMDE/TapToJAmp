@@ -352,7 +352,7 @@ void InitGameplayScreen(void)
     isGamePaused = false;
     
     InitPlayer(&player, (Vector2){5, 2}, (Vector2){0, 17.85f}, 0.5f * GAME_SPEED);
-    playerDeadSound = LoadSound("assets/gameplay/deadSound.ogg");
+    playerDeadSound = LoadSound("assets/gameplay/deadSound2.ogg");
     SetSoundVolume(playerDeadSound, mainVolume);
     
     // Init Triangles
