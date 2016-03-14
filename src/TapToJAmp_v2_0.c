@@ -31,13 +31,12 @@
 *
 ********************************************************************************************/
 
-#include "raylib.h"
 #include "screens/screens.h"    // NOTE: Defines global variable: currentScreen
-
+#include "raylib.h"
 //#define DEBUG
 
 #if defined(PLATFORM_WEB)
-    #include <emscripten/emscripten.h>
+    #include <emscripten/emscripten.h> 
 #endif
 
 //----------------------------------------------------------------------------------
