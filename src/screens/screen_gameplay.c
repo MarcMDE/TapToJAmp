@@ -607,11 +607,13 @@ void UpdateGameplayScreen(void)
     {
         ResetGameplay();
     }
+    /*
     // Press enter to change to ENDING screen
     if (IsKeyPressed(KEY_ENTER))
     {
         finishScreen = 1;
     }
+    */
 }
 
 // Gameplay Screen Draw logic
